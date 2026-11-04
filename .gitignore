@@ -1,0 +1,10 @@
+# Build-Ausgabe (wird von build.sh erzeugt)
+build/
+*.apk
+*.apk.idsig
+
+# Signier-Schlüssel und Passwort: nicht ins Repo, separat sichern
+*.keystore
+keystore-passwort.txt
+
+.DS_Store
