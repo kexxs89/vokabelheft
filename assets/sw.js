@@ -1,9 +1,10 @@
 // Offline-Modus für die Webversion. Bei Änderungen an Dateien VERSION hochzählen.
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = "vokabelheft-" + VERSION;
 const FILES = [
   "./",
   "index.html",
+  "runner.html",
   "manifest.webmanifest",
   "fonts/Andika-400.woff2",
   "fonts/Andika-700.woff2",
@@ -31,9 +32,9 @@ self.addEventListener("fetch", e => {
   if (req.mode === "navigate") {
     // Seite: erst Internet (damit Updates ankommen), sonst gespeicherte Version
     e.respondWith(fetch(req).then(r => {
-      if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); }
+      if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return r;
-    }).catch(() => caches.match("index.html")));
+    }).catch(() => caches.match(req, {ignoreSearch: true}).then(hit => hit || caches.match("index.html"))));
     return;
   }
   // Schriften, Icons: aus dem Speicher

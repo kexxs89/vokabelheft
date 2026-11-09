@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Vokabel-Rennen</title>
+<meta name="theme-color" content="#1f45b5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vokabel-Rennen">
+<style>
+@font-face{font-family:'Andika';font-weight:400;font-display:swap;src:url(fonts/Andika-400.woff2) format('woff2')}
+@font-face{font-family:'Andika';font-weight:700;font-display:swap;src:url(fonts/Andika-700.woff2) format('woff2')}
+@font-face{font-family:'Lilita One';font-weight:400;font-display:swap;src:url(fonts/LilitaOne-400.woff2) format('woff2')}
+:root{
+  --ink:#1f45b5; --ink-dark:#14307f; --red:#d6333c; --green:#22915a; --marker:#ffd84a;
+  --paper:#fbfcf7; --text:#1d2433; --muted:#5b6577; --line:#cfd8e6;
+  --font-display:"Lilita One","Arial Rounded MT Bold",sans-serif;
+  --font-body:"Andika","Avenir Next",system-ui,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:#1f45b5;font-family:var(--font-body);color:var(--text);
+  touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* Anzeige oben */
+.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;
+  padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));pointer-events:none}
+.pill{background:rgba(255,255,255,.92);border-radius:999px;padding:5px 12px;font-weight:700;font-size:17px;
+  font-variant-numeric:tabular-nums;box-shadow:0 2px 0 rgba(0,0,0,.15)}
+.hud .grow{flex:1}
+.hud button{pointer-events:auto;background:rgba(255,255,255,.92);border:none;border-radius:999px;width:40px;height:40px;
+  font-size:18px;box-shadow:0 2px 0 rgba(0,0,0,.15)}
+
+/* Karten über dem Spiel */
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:16px;background:rgba(20,48,127,.55);z-index:10;overflow:auto;touch-action:auto}
+.card{width:min(460px,100%);background:var(--paper);border-radius:24px;padding:22px 20px;text-align:center;
+  box-shadow:0 8px 0 rgba(0,0,0,.2);display:flex;flex-direction:column;gap:12px;align-items:center}
+h1{font-family:var(--font-display);font-weight:400;color:var(--ink);font-size:36px;margin:0;line-height:1}
+h2{font-family:var(--font-display);font-weight:400;font-size:26px;margin:0;line-height:1.1}
+p{margin:0}
+.muted{color:var(--muted);font-size:15px}
+.help{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;text-align:left;font-size:16px;margin:4px 0}
+.help b{font-size:20px;text-align:center}
+.big-btn{font-family:var(--font-display);font-size:26px;letter-spacing:.5px;padding:12px 34px;border:none;border-radius:18px;
+  background:var(--ink);color:#fff;box-shadow:0 5px 0 var(--ink-dark)}
+.big-btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink-dark)}
+.big-btn.green{background:var(--green);box-shadow:0 5px 0 #146b3f}
+.link{color:var(--ink);font-size:16px;text-decoration:underline;text-underline-offset:3px}
+.units{font-size:14px;color:var(--muted)}
+
+/* Vokabel-Frage */
+.q-pic{font-size:72px;line-height:1.1}
+.q-ask{font-size:18px;color:var(--muted)}
+.q-de{font-family:var(--font-display);font-size:32px;line-height:1.1;color:var(--text)}
+.q-de .art{color:var(--muted);font-size:.6em;margin-right:6px;font-family:var(--font-body);font-weight:700}
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.answers button{background:#fff;border:3px solid var(--line);border-radius:16px;padding:12px 8px;font-size:20px;font-weight:700;
+  min-height:60px;word-break:break-word;box-shadow:0 3px 0 var(--line)}
+.answers button:active{transform:translateY(2px)}
+.answers button.ok{border-color:var(--green);background:#e2f5ea;color:var(--green)}
+.answers button.bad{border-color:var(--red);background:#fde8e8;color:var(--red)}
+.answers button:disabled{cursor:default}
+.q-msg{font-family:var(--font-display);font-size:24px;min-height:30px}
+.q-msg.ok{color:var(--green)} .q-msg.bad{color:var(--red)}
+.speak{border:2px solid var(--line);background:#fff;border-radius:999px;width:44px;height:44px;font-size:20px}
+.countdown{position:fixed;inset:0;display:grid;place-items:center;font-family:var(--font-display);font-size:120px;color:#fff;
+  text-shadow:0 6px 0 var(--ink-dark);pointer-events:none;z-index:9}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.stats div{background:#fff;border:2px solid var(--line);border-radius:14px;padding:8px}
+.stats b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+@media (max-width:380px){ .answers button{font-size:17px} .q-de{font-size:27px} }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud" id="hud" hidden>
+  <span class="pill">🏃 <span id="score">0</span></span>
+  <span class="pill">🪙 <span id="coins">0</span></span>
+  <span class="grow"></span>
+  <button id="pauseBtn" aria-label="Pause">⏸</button>
+</div>
+
+<div class="overlay" id="startScreen">
+  <div class="card">
+    <h1>Vokabel-Rennen</h1>
+    <p>Lauf so weit du kannst! Wenn du gegen etwas rennst, beantwortest du eine Vokabel und es geht weiter.</p>
+    <div class="help">
+      <b>⬅️➡️</b><span>Wischen: Spur wechseln</span>
+      <b>⬆️</b><span>Wischen: springen (über Absperrungen)</span>
+      <b>⬇️</b><span>Wischen: rutschen (unter Schranken durch)</span>
+    </div>
+    <p class="muted">Am Computer: Pfeiltasten</p>
+    <p class="units" id="unitInfo">Wörter werden geladen …</p>
+    <p class="muted" id="bestInfo"></p>
+    <button class="big-btn" id="startBtn" disabled>Los geht's!</button>
+    <a class="link" href="index.html">← Zum Vokabelheft (Themen aussuchen)</a>
+  </div>
+</div>
+
+<div class="overlay" id="pauseScreen" hidden>
+  <div class="card">
+    <h2>Pause</h2>
+    <button class="big-btn green" id="resumeBtn">Weiter</button>
+    <button class="link" id="endBtn" style="background:none;border:none">Spiel beenden</button>
+  </div>
+</div>
+
+<div class="overlay" id="questionScreen" hidden>
+  <div class="card">
+    <p class="q-msg bad" id="qTitle">Autsch! 💥</p>
+    <div class="q-pic" id="qPic"></div>
+    <p class="q-ask">Wie heißt das auf Englisch?</p>
+    <p class="q-de" id="qDe"></p>
+    <div class="answers" id="answers"></div>
+    <p class="q-msg" id="qMsg"></p>
+    <button class="speak" id="qSpeak" aria-label="Anhören" hidden>🔊</button>
+    <button class="big-btn green" id="qNext" hidden>Weiter</button>
+  </div>
+</div>
+
+<div class="overlay" id="endScreen" hidden>
+  <div class="card">
+    <h2>Geschafft!</h2>
+    <div class="stats">
+      <div>Strecke<b id="endScore">0</b></div>
+      <div>Münzen<b id="endCoins">0</b></div>
+      <div>Vokabeln richtig<b id="endRight">0</b></div>
+      <div>Rekord<b id="endBest">0</b></div>
+    </div>
+    <p class="muted" id="endNew"></p>
+    <button class="big-btn" id="againBtn">Nochmal</button>
+    <a class="link" href="index.html">← Zum Vokabelheft</a>
+  </div>
+</div>
+
+<div class="countdown" id="countdown" hidden></div>
+
+<script>
+/* ---------- Vokabeln: dieselbe Liste und derselbe Lernstand wie im Vokabelheft ---------- */
+const VOCAB_URL = "https://gist.githubusercontent.com/kexxs89/d49b792d93d6dc68ab737c4e7aa6a149/raw";
+const LIST_KEY = "vokabelheft-liste", KEY = "vokabelheft-v1", BEST_KEY = "vokabelheft-rennen-rekord";
+const LEARNED = 3;
+let TOPICS = [], POOL = [];
+let store = {words:{}, stars:0, sound:true, topics:[]};
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) store = Object.assign(store, s); } catch(e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(store)); } catch(e) {} }
+const level = w => (store.words[w.id]?.lvl) || 0;
+
+function slug(s){ return String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "thema"; }
+// Gleiches Format und gleiche Wort-IDs wie im Vokabelheft, damit der Lernstand zusammenpasst
+function parseVocab(data){
+  const th = data && (data.themen || data.topics);
+  if (!Array.isArray(th)) return null;
+  const out = [], seen = new Set();
+  th.forEach(t => {
+    const ws = t && (t.woerter || t.words);
+    if (!t || !t.name || !Array.isArray(ws)) return;
+    let id = t.id ? String(t.id) : slug(t.name);
+    while (seen.has(id)) id += "-2";
+    seen.add(id);
+    const words = ws.map(w => {
+      if (!w || !w.de || !w.en) return null;
+      const alts = (Array.isArray(w.en) ? w.en : String(w.en).split("|")).map(x => String(x).trim()).filter(Boolean);
+      return alts.length ? {id:id+":"+alts[0], de:String(w.de).trim(), en:alts[0], em:String(w.bild || w.em || t.bild || "📝"), topic:id} : null;
+    }).filter(Boolean);
+    if (words.length) out.push({id, name:String(t.name), words});
+  });
+  return out.length ? out : null;
+}
+function useTopics(list){
+  TOPICS = list;
+  let chosen = TOPICS.filter(t => store.topics.includes(t.id));
+  if (!chosen.length) chosen = TOPICS.filter(t => t.id.startsWith("more1-"));
+  if (!chosen.length) chosen = TOPICS;
+  POOL = chosen.flatMap(t => t.words);
+  const names = chosen.map(t => t.name.replace(/:.*/, ""));
+  $("#unitInfo").textContent = `Vokabeln aus: ${names.length > 4 ? names.slice(0,4).join(", ") + " und " + (names.length-4) + " weitere" : names.join(", ")} (${POOL.length} Wörter)`;
+  $("#startBtn").disabled = POOL.length < 4;
+}
+async function loadVocab(){
+  try { const c = parseVocab(JSON.parse(localStorage.getItem(LIST_KEY))); if (c) useTopics(c); } catch(e) {}
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(VOCAB_URL + "?t=" + Date.now(), {signal:ctl.signal, cache:"no-store"});
+    clearTimeout(to);
+    const txt = await r.text(), list = parseVocab(JSON.parse(txt));
+    if (list) { try { localStorage.setItem(LIST_KEY, txt); } catch(e) {} useTopics(list); }
+  } catch(e) {
+    if (!POOL.length) $("#unitInfo").textContent = "Keine Wörterliste gefunden. Öffne einmal das Vokabelheft mit Internet.";
+  }
+}
+
+/* ---------- Hilfen, Ton, Sprache ---------- */
+const $ = s => document.querySelector(s);
+const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+function esc(s){ return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function deHTML(de){ const m = de.match(/^(der|die|das)\s+(.*)$/); return m ? `<span class="art">${m[1]}</span>${esc(m[2])}` : esc(de); }
+let actx = null;
+function beep(notes){
+  if (!store.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    let t = actx.currentTime;
+    notes.forEach(([f,dur,type="sine",vol=.15]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t+dur);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t+dur); t += dur*.8;
+    });
+  } catch(e) {}
+}
+const sfx = {
+  coin: () => beep([[988,.06,"triangle",.07],[1319,.08,"triangle",.07]]),
+  jump: () => beep([[440,.08,"triangle",.06],[660,.08,"triangle",.06]]),
+  crash: () => beep([[200,.15,"square",.08],[120,.3,"square",.08]]),
+  ok: () => beep([[523,.12],[659,.12],[784,.25]]),
+  bad: () => beep([[220,.18,"square",.06],[180,.25,"square",.06]]),
+  tick: () => beep([[660,.08,"triangle",.08]])
+};
+let voice = null;
+function pickVoice(){ try { const vs = speechSynthesis.getVoices(); voice = vs.find(v => v.lang === "en-GB") || vs.find(v => /^en[-_]/.test(v.lang)) || null; } catch(e) {} }
+try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch(e) {}
+function speak(text){
+  if (window.AndroidTTS) { try { window.AndroidTTS.speak(text); return; } catch(e) {} }
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = "en-GB"; if (voice) u.voice = voice; u.rate = .85; speechSynthesis.speak(u); } catch(e) {}
+}
+
+/* ---------- Spielwelt ----------
+   Alles in "Spur-Einheiten": eine Spur ist 1 breit. z ist die Entfernung nach vorne. */
+const cv = $("#game"), ctx = cv.getContext("2d");
+if (!ctx.roundRect) ctx.roundRect = function(x, y, w, h){ this.rect(x, y, w, h); }; // ältere Browser
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+const D = 5;            // Kamera-Abstand (Perspektive)
+const PZ = 1.2;         // wo die Spielfigur steht
+const FAR = 70;
+const horizon = () => H * 0.34;
+const unitPx = () => Math.min(W * 0.3, H * 0.42);
+const scale = z => D / (Math.max(z, -D + 0.5) + D);
+const sy = (z, h = 0) => horizon() + (H * 1.02 - horizon()) * scale(z) - h * unitPx() * scale(z);
+const sx = (x, z) => W / 2 + x * unitPx() * scale(z);
+
+let G = null; // Spielzustand
+function newGame(){
+  G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0,
+       lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set(), stepT:0};
+}
+newGame();
+
+function spawnRow(z){
+  // Mindestens eine Spur bleibt frei oder überwindbar
+  const kinds = ["low","high","train"];
+  const lanes = shuffle([-1,0,1]);
+  const n = Math.random() < .35 ? 2 : 1;
+  for (let i = 0; i < n; i++){
+    const k = kinds[Math.floor(Math.random() * (G.dist < 150 ? 2 : 3))];
+    G.objs.push({type:k, lane:lanes[i], z: k === "train" ? z + 3 : z, depth: k === "train" ? 6 : .5,
+      color: ["#d6333c","#1f45b5","#22915a","#ff8a3d"][Math.floor(Math.random()*4)]});
+  }
+  const free = lanes[2];
+  if (Math.random() < .7) for (let i = 0; i < 5; i++) G.objs.push({type:"coin", lane:free, z:z + i*1.6, depth:.4});
+}
+function spawnDeco(z){
+  for (const side of [-1, 1]) G.deco.push({side, z, h: 1.5 + Math.random()*2.5, w: 1 + Math.random()*1.2,
+    color: ["#f2c14e","#e76f51","#90be6d","#9b8ec4","#f4a3a8","#7fb7e8"][Math.floor(Math.random()*6)], tree: Math.random() < .35});
+}
+
+/* ---------- Steuerung ---------- */
+function move(dir){ if (!G.running) return; G.lane = Math.max(-1, Math.min(1, G.lane + dir)); }
+function jump(){ if (!G.running || G.y > .01) return; G.vy = 8.6; G.slide = 0; sfx.jump(); }
+function slide(){ if (!G.running) return; G.slide = .75; if (G.y > .01) G.vy = -12; }
+addEventListener("keydown", e => {
+  const k = e.key;
+  if (k === "ArrowLeft" || k === "a") move(-1);
+  else if (k === "ArrowRight" || k === "d") move(1);
+  else if (k === "ArrowUp" || k === "w" || k === " ") jump();
+  else if (k === "ArrowDown" || k === "s") slide();
+  else return;
+  e.preventDefault();
+});
+let touch = null;
+cv.addEventListener("pointerdown", e => { touch = {x:e.clientX, y:e.clientY, done:false}; });
+cv.addEventListener("pointermove", e => {
+  if (!touch || touch.done) return;
+  const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 28) return;
+  touch.done = true;
+  if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 1 : -1); else if (dy < 0) jump(); else slide();
+});
+cv.addEventListener("pointerup", () => { if (touch && !touch.done) jump(); touch = null; });
+
+/* ---------- Ablauf ---------- */
+let last = 0;
+function loop(ts){
+  const dt = Math.min(.05, (ts - (last || ts)) / 1000); last = ts;
+  if (G.running) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+function update(dt){
+  G.t += dt;
+  G.speed = Math.min(30, 13 + G.dist / 90);
+  const dz = G.speed * dt;
+  G.dist += dz;
+  G.x += (G.lane - G.x) * Math.min(1, dt * 14);
+  G.vy -= 26 * dt; G.y = Math.max(0, G.y + G.vy * dt); if (G.y === 0) G.vy = 0;
+  G.slide = Math.max(0, G.slide - dt);
+  for (const o of G.objs) o.z -= dz;
+  for (const d of G.deco) d.z -= dz;
+  G.objs = G.objs.filter(o => !o.gone && o.z + o.depth > -1);
+  G.deco = G.deco.filter(d => d.z > -2);
+  G.nextRow -= dz; if (G.nextRow <= 0) { spawnRow(FAR); G.nextRow = 9 + Math.random() * 6 + G.speed * .15; }
+  G.nextDeco -= dz; if (G.nextDeco <= 0) { spawnDeco(FAR); G.nextDeco = 3 + Math.random() * 2; }
+
+  const lane = Math.round(G.x);
+  for (const o of G.objs){
+    if (o.lane !== lane || o.gone) continue;
+    if (PZ < o.z - .35 || PZ > o.z + o.depth + .1) continue;
+    if (o.type === "coin"){ o.gone = true; G.coins++; sfx.coin(); continue; }
+    const hit = o.type === "train" || (o.type === "low" && G.y < .75) || (o.type === "high" && G.slide <= 0);
+    if (hit) { crash(); return; }
+  }
+  $("#score").textContent = Math.floor(G.dist);
+  $("#coins").textContent = G.coins;
+}
+
+/* ---------- Zeichnen ---------- */
+function quad(x1, y1, x2, y2, x3, y3, x4, y4, color){
+  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.lineTo(x4,y4); ctx.closePath(); ctx.fill();
+}
+function box(x, z, w, h, depth, front, top, lift = 0){
+  // Quader: Vorderseite bei z, Dach bis z+depth
+  const zf = Math.max(z, -D + .6), zb = z + depth;
+  const l = sx(x - w/2, zf), r = sx(x + w/2, zf), yb = sy(zf, lift), yt = sy(zf, lift + h);
+  const lb = sx(x - w/2, zb), rb = sx(x + w/2, zb), ytb = sy(zb, lift + h);
+  if (depth > .01) quad(l, yt, r, yt, rb, ytb, lb, ytb, top);
+  ctx.fillStyle = front; ctx.fillRect(l, yt, r - l, yb - yt);
+  return {l, r, yt, yb};
+}
+function draw(){
+  const hz = horizon();
+  // Himmel
+  const sky = ctx.createLinearGradient(0, 0, 0, hz);
+  sky.addColorStop(0, "#7cc4f5"); sky.addColorStop(1, "#cfeaff");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+  // Wiese
+  ctx.fillStyle = "#8fcf6a"; ctx.fillRect(0, hz, W, H - hz);
+  // Strecke
+  const zf = -1;
+  quad(sx(-1.6, FAR), sy(FAR), sx(1.6, FAR), sy(FAR), sx(1.6, zf), sy(zf), sx(-1.6, zf), sy(zf), "#c9b79c");
+  // Gleise je Spur mit Schwellen
+  const off = (G.dist % 2);
+  for (let k = 0; k < FAR; k += 2){
+    const z = k - off; if (z < -1) continue;
+    for (const ln of [-1, 0, 1]) {
+      const y = sy(z), t = Math.max(1, 6 * scale(z));
+      ctx.fillStyle = "#8a6b4a"; ctx.fillRect(sx(ln - .42, z), y - t/2, sx(ln + .42, z) - sx(ln - .42, z), t);
+    }
+  }
+  ctx.strokeStyle = "#7d858f"; ctx.lineWidth = 2;
+  for (const ln of [-1, 0, 1]) for (const r of [-.3, .3]) {
+    ctx.beginPath(); ctx.moveTo(sx(ln + r, FAR), sy(FAR)); ctx.lineTo(sx(ln + r, -1), sy(-1)); ctx.stroke();
+  }
+  // Häuser und Bäume am Rand, hinten zuerst
+  const items = [...G.deco.map(d => ({d, z:d.z})), ...G.objs.map(o => ({o, z:o.z}))].sort((a, b) => b.z - a.z);
+  let playerDrawn = false;
+  for (const it of items){
+    if (!playerDrawn && it.z < PZ - .2) { drawPlayer(); playerDrawn = true; }
+    if (it.d) drawDeco(it.d); else drawObj(it.o);
+  }
+  if (!playerDrawn) drawPlayer();
+}
+function drawDeco(d){
+  const x = d.side * (2.2 + d.w / 2);
+  if (d.tree){
+    const s = box(x, d.z, .25, d.h * .5, 0, "#7a5230", "#7a5230");
+    const cx = (s.l + s.r) / 2, rr = unitPx() * scale(d.z) * .7;
+    ctx.fillStyle = "#3f9b4b"; ctx.beginPath(); ctx.arc(cx, s.yt - rr * .6, rr, 0, 7); ctx.fill();
+  } else {
+    const s = box(x, d.z, d.w, d.h, 1.2, d.color, "rgba(0,0,0,.15)");
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    const ww = (s.r - s.l) / 5, wh = (s.yb - s.yt) / 6;
+    for (let i = 1; i < 5; i += 2) for (let j = 1; j < 5; j += 2) ctx.fillRect(s.l + i * ww, s.yt + j * wh, ww * .8, wh * .8);
+  }
+}
+function drawObj(o){
+  if (o.z > FAR) return;
+  if (o.type === "coin"){
+    const r = Math.max(2, unitPx() * scale(o.z) * .16), cx = sx(o.lane, o.z), cy = sy(o.z, .6);
+    const w = Math.abs(Math.cos(G.t * 4 + o.z)) * r + 1;
+    ctx.fillStyle = "#f5b800"; ctx.beginPath(); ctx.ellipse(cx, cy, w, r, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#ffe066"; ctx.beginPath(); ctx.ellipse(cx, cy, w * .6, r * .6, 0, 0, 7); ctx.fill();
+    return;
+  }
+  if (o.type === "low"){
+    // Absperrung: drüberspringen
+    const s = box(o.lane, o.z, .9, .55, .12, "#fff", "#ddd");
+    ctx.fillStyle = o.color; const sw = (s.r - s.l) / 6;
+    for (let i = 0; i < 6; i += 2) ctx.fillRect(s.l + i * sw, s.yt, sw, (s.yb - s.yt) * .55);
+    return;
+  }
+  if (o.type === "high"){
+    // Schranke: drunter durchrutschen
+    box(o.lane - .42, o.z, .08, 1.5, .08, "#555", "#444");
+    box(o.lane + .42, o.z, .08, 1.5, .08, "#555", "#444");
+    const s = box(o.lane, o.z, .95, .35, .1, "#fff", "#ddd", 1.05);
+    ctx.fillStyle = o.color; const sw = (s.r - s.l) / 6;
+    for (let i = 0; i < 6; i += 2) ctx.fillRect(s.l + i * sw, s.yt, sw, s.yb - s.yt);
+    return;
+  }
+  // Zug: Spur wechseln
+  const s = box(o.lane, o.z, .92, 1.9, o.depth, o.color, "rgba(255,255,255,.35)");
+  const w = s.r - s.l, h = s.yb - s.yt;
+  ctx.fillStyle = "#cfeaff"; ctx.fillRect(s.l + w * .12, s.yt + h * .12, w * .76, h * .3);
+  ctx.fillStyle = "#ffe066";
+  ctx.beginPath(); ctx.arc(s.l + w * .22, s.yt + h * .7, w * .07, 0, 7); ctx.arc(s.r - w * .22, s.yt + h * .7, w * .07, 0, 7); ctx.fill();
+}
+function drawPlayer(){
+  const sc = scale(PZ), u = unitPx() * sc;
+  const cx = sx(G.x, PZ), ground = sy(PZ), yb = ground - G.y * u;
+  // Schatten
+  ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(cx, ground, u * .28, u * .07, 0, 0, 7); ctx.fill();
+  const sliding = G.slide > 0;
+  const hgt = sliding ? .55 : 1.15;
+  const run = G.running && G.y === 0 && !sliding ? Math.sin(G.t * 16) : 0;
+  ctx.lineCap = "round";
+  // Beine
+  ctx.strokeStyle = "#1d2433"; ctx.lineWidth = u * .1;
+  const hipY = yb - u * hgt * .42;
+  ctx.beginPath(); ctx.moveTo(cx - u*.06, hipY); ctx.lineTo(cx - u*.06 + run * u * .14, yb - u*.02);
+  ctx.moveTo(cx + u*.06, hipY); ctx.lineTo(cx + u*.06 - run * u * .14, yb - u*.02); ctx.stroke();
+  // Körper (Hoodie)
+  ctx.fillStyle = "#1f45b5";
+  const bodyTop = yb - u * hgt * .8;
+  ctx.beginPath(); ctx.roundRect(cx - u*.17, bodyTop, u*.34, hipY - bodyTop + u*.04, u*.08); ctx.fill();
+  // Arme
+  ctx.strokeStyle = "#1f45b5"; ctx.lineWidth = u * .09;
+  ctx.beginPath(); ctx.moveTo(cx - u*.16, bodyTop + u*.08); ctx.lineTo(cx - u*.26 - run * u * .08, bodyTop + u*.3);
+  ctx.moveTo(cx + u*.16, bodyTop + u*.08); ctx.lineTo(cx + u*.26 + run * u * .08, bodyTop + u*.3); ctx.stroke();
+  // Rucksack
+  ctx.fillStyle = "#ffd84a"; ctx.beginPath(); ctx.roundRect(cx - u*.13, bodyTop + u*.06, u*.26, u*.22, u*.05); ctx.fill();
+  // Kopf mit Kappe (von hinten)
+  const hr = u * .14, hy = bodyTop - hr * .9;
+  ctx.fillStyle = "#7a4a2a"; ctx.beginPath(); ctx.arc(cx, hy, hr, 0, 7); ctx.fill();
+  ctx.fillStyle = "#d6333c"; ctx.beginPath(); ctx.arc(cx, hy - hr * .15, hr * 1.02, Math.PI, 0); ctx.fill();
+}
+
+/* ---------- Unfall und Vokabel-Frage ---------- */
+let current = null;
+function pickWord(){
+  const pool = POOL.filter(w => !G.asked.has(w.id));
+  const src = pool.length ? pool : POOL;
+  // Wörter, die noch nicht sitzen, kommen öfter dran
+  const w = src.map(w => ({w, k: level(w) + Math.random() * 2})).sort((a, b) => a.k - b.k)[0].w;
+  G.asked.add(w.id);
+  return w;
+}
+function crash(){
+  G.running = false; sfx.crash();
+  if (navigator.vibrate) try { navigator.vibrate(120); } catch(e) {}
+  setTimeout(() => ask(true), 350);
+}
+function ask(first){
+  const w = pickWord();
+  // Falsche Antworten möglichst aus derselben Unit, damit es nicht zu leicht wird
+  const other = x => x.en.toLowerCase() !== w.en.toLowerCase();
+  const wrongs = [...shuffle(POOL.filter(x => other(x) && x.topic === w.topic)), ...shuffle(POOL.filter(x => other(x) && x.topic !== w.topic))];
+  const opts = [w.en];
+  for (const x of wrongs) { if (opts.length >= 4) break; if (!opts.some(o => o.toLowerCase() === x.en.toLowerCase())) opts.push(x.en); }
+  current = {w, done:false};
+  $("#qTitle").textContent = first ? "Autsch! 💥 Beantworte die Vokabel, dann geht's weiter." : "Noch eine Vokabel!";
+  $("#qTitle").className = "q-msg" + (first ? " bad" : "");
+  $("#qPic").textContent = w.em;
+  $("#qDe").innerHTML = deHTML(w.de);
+  $("#qMsg").textContent = ""; $("#qMsg").className = "q-msg";
+  $("#qSpeak").hidden = true; $("#qNext").hidden = true;
+  $("#answers").innerHTML = shuffle(opts).map(o => `<button data-a="${esc(o)}">${esc(o)}</button>`).join("");
+  $("#questionScreen").hidden = false;
+}
+$("#answers").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || current.done) return;
+  current.done = true;
+  const w = current.w, ok = b.dataset.a === w.en;
+  const rec = store.words[w.id] || {lvl:0, r:0, f:0};
+  document.querySelectorAll("#answers button").forEach(x => { x.disabled = true; if (x.dataset.a === w.en) x.classList.add("ok"); });
+  if (ok) {
+    rec.r++; rec.lvl = Math.min(LEARNED, rec.lvl + 1); store.stars++; G.right++;
+    $("#qMsg").textContent = "Richtig! ⭐ Weiter geht's!"; $("#qMsg").className = "q-msg ok"; sfx.ok();
+  } else {
+    rec.f++; rec.lvl = 0; G.wrong++;
+    b.classList.add("bad");
+    $("#qMsg").textContent = `Leider falsch. Richtig ist: ${w.en}`; $("#qMsg").className = "q-msg bad"; sfx.bad();
+  }
+  store.words[w.id] = rec; save();
+  $("#qSpeak").hidden = false;
+  setTimeout(() => speak(w.en), 300);
+  $("#qNext").textContent = ok ? "Weiterlaufen" : "Nächste Vokabel";
+  $("#qNext").hidden = false;
+  current.ok = ok;
+});
+$("#qSpeak").onclick = () => current && speak(current.w.en);
+$("#qNext").onclick = () => {
+  if (!current.ok) return ask(false);
+  $("#questionScreen").hidden = true;
+  // Hindernisse direkt vor der Figur wegräumen
+  G.objs = G.objs.filter(o => o.z > PZ + 12 || o.type === "coin");
+  G.y = 0; G.vy = 0; G.slide = 0;
+  countdown(() => { G.running = true; });
+};
+function countdown(done){
+  const el = $("#countdown"); let n = 3;
+  el.hidden = false; el.textContent = n; sfx.tick();
+  const iv = setInterval(() => {
+    n--;
+    if (n > 0) { el.textContent = n; sfx.tick(); }
+    else { clearInterval(iv); el.hidden = true; last = 0; done(); }
+  }, 600);
+}
+
+/* ---------- Start, Pause, Ende ---------- */
+function best(){ try { return +localStorage.getItem(BEST_KEY) || 0; } catch(e) { return 0; } }
+function showBest(){ const b = best(); $("#bestInfo").textContent = b ? `Dein Rekord: ${b}` : ""; }
+function start(){
+  newGame();
+  for (let z = 0; z < FAR; z += 4) spawnDeco(z);
+  $("#startScreen").hidden = true; $("#endScreen").hidden = true; $("#hud").hidden = false;
+  try { actx && actx.resume(); } catch(e) {}
+  countdown(() => { G.running = true; });
+}
+$("#startBtn").onclick = start;
+$("#againBtn").onclick = start;
+$("#pauseBtn").onclick = () => { if (!G.running) return; G.running = false; $("#pauseScreen").hidden = false; };
+$("#resumeBtn").onclick = () => { $("#pauseScreen").hidden = true; countdown(() => { G.running = true; }); };
+$("#endBtn").onclick = () => {
+  $("#pauseScreen").hidden = true; $("#hud").hidden = true;
+  const score = Math.floor(G.dist), old = best(), rec = score > old;
+  if (rec) try { localStorage.setItem(BEST_KEY, score); } catch(e) {}
+  $("#endScore").textContent = score; $("#endCoins").textContent = G.coins;
+  $("#endRight").textContent = `${G.right} von ${G.right + G.wrong}`; $("#endBest").textContent = Math.max(score, old);
+  $("#endNew").textContent = rec ? "🎉 Neuer Rekord!" : "";
+  $("#endScreen").hidden = false; showBest();
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && G.running) { G.running = false; $("#pauseScreen").hidden = false; }
+});
+
+showBest();
+loadVocab();
+requestAnimationFrame(loop);
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
