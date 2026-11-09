@@ -54,6 +54,15 @@ p{margin:0}
 .big-btn.green{background:var(--green);box-shadow:0 5px 0 #146b3f}
 .link{color:var(--ink);font-size:16px;text-decoration:underline;text-underline-offset:3px}
 .units{font-size:14px;color:var(--muted)}
+.pick-title{font-size:21px;color:var(--ink);margin-top:4px}
+.topics{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;width:100%;max-height:38vh;overflow:auto;padding:2px;touch-action:pan-y}
+.topic{display:flex;align-items:center;gap:8px;text-align:left;background:#fff;border:3px solid var(--line);border-radius:14px;padding:7px 9px;font-size:14px;line-height:1.2;position:relative}
+.topic .em{font-size:22px;flex:none}
+.topic b{display:block;font-size:15px}
+.topic[aria-pressed="true"]{border-color:var(--ink);background:#e6ecfb}
+.topic[aria-pressed="true"]::after{content:"✓";position:absolute;top:4px;right:6px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+.pick-actions{display:flex;gap:18px}
+.pick-actions .link{background:none;border:none;padding:0}
 
 /* Vokabel-Frage */
 .q-pic{font-size:72px;line-height:1.1}
@@ -81,6 +90,9 @@ p{margin:0}
 <body>
 <canvas id="game"></canvas>
 
+<script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+
 <div class="hud" id="hud" hidden>
   <span class="pill">🏃 <span id="score">0</span></span>
   <span class="pill">🪙 <span id="coins">0</span></span>
@@ -98,10 +110,16 @@ p{margin:0}
       <b>⬇️</b><span>Wischen: rutschen (unter Schranken durch)</span>
     </div>
     <p class="muted">Am Computer: Pfeiltasten</p>
+    <h2 class="pick-title">Welches Kapitel willst du üben?</h2>
+    <div class="topics" id="topicPick"></div>
+    <div class="pick-actions">
+      <button class="link" id="allUnits">Alle Units</button>
+      <button class="link" id="noUnits">Keins</button>
+    </div>
     <p class="units" id="unitInfo">Wörter werden geladen …</p>
     <p class="muted" id="bestInfo"></p>
     <button class="big-btn" id="startBtn" disabled>Los geht's!</button>
-    <a class="link" href="index.html">← Zum Vokabelheft (Themen aussuchen)</a>
+    <a class="link" href="index.html">← Zum Vokabelheft</a>
   </div>
 </div>
 
@@ -171,20 +189,38 @@ function parseVocab(data){
       const alts = (Array.isArray(w.en) ? w.en : String(w.en).split("|")).map(x => String(x).trim()).filter(Boolean);
       return alts.length ? {id:id+":"+alts[0], de:String(w.de).trim(), en:alts[0], em:String(w.bild || w.em || t.bild || "📝"), topic:id} : null;
     }).filter(Boolean);
-    if (words.length) out.push({id, name:String(t.name), words});
+    if (words.length) out.push({id, name:String(t.name), em:String(t.bild || t.em || words[0].em), words});
   });
   return out.length ? out : null;
 }
+// Kapitelauswahl: dieselbe Auswahl wie im Vokabelheft
 function useTopics(list){
   TOPICS = list;
-  let chosen = TOPICS.filter(t => store.topics.includes(t.id));
-  if (!chosen.length) chosen = TOPICS.filter(t => t.id.startsWith("more1-"));
-  if (!chosen.length) chosen = TOPICS;
-  POOL = chosen.flatMap(t => t.words);
-  const names = chosen.map(t => t.name.replace(/:.*/, ""));
-  $("#unitInfo").textContent = `Vokabeln aus: ${names.length > 4 ? names.slice(0,4).join(", ") + " und " + (names.length-4) + " weitere" : names.join(", ")} (${POOL.length} Wörter)`;
-  $("#startBtn").disabled = POOL.length < 4;
+  store.topics = store.topics.filter(id => TOPICS.some(t => t.id === id));
+  renderPick();
 }
+function renderPick(){
+  $("#topicPick").innerHTML = TOPICS.map(t => {
+    const m = t.name.match(/^(Unit \d+):\s*(.*)$/);
+    const label = m ? `<b>${esc(m[1])}</b>${esc(m[2])}` : `<b>${esc(t.name)}</b>`;
+    return `<button class="topic" data-id="${esc(t.id)}" aria-pressed="${store.topics.includes(t.id)}"><span class="em">${t.em}</span><span>${label}</span></button>`;
+  }).join("");
+  const chosen = TOPICS.filter(t => store.topics.includes(t.id));
+  POOL = chosen.flatMap(t => t.words);
+  $("#unitInfo").textContent = chosen.length ? `${chosen.length} Kapitel ausgewählt, ${POOL.length} Wörter` : "Bitte wähle mindestens ein Kapitel aus.";
+  refreshStart();
+}
+function bindPick(){
+  $("#topicPick").addEventListener("click", e => {
+    const b = e.target.closest(".topic"); if (!b) return;
+    const id = b.dataset.id;
+    store.topics = store.topics.includes(id) ? store.topics.filter(x => x !== id) : [...store.topics, id];
+    save(); renderPick();
+  });
+  $("#allUnits").onclick = () => { store.topics = TOPICS.filter(t => t.id.startsWith("more1-")).map(t => t.id); save(); renderPick(); };
+  $("#noUnits").onclick = () => { store.topics = []; save(); renderPick(); };
+}
+function refreshStart(){ $("#startBtn").disabled = POOL.length < 4 || !modelsReady; if (!modelsReady) $("#startBtn").textContent = "Lädt …"; else $("#startBtn").textContent = "Los geht's!"; }
 async function loadVocab(){
   try { const c = parseVocab(JSON.parse(localStorage.getItem(LIST_KEY))); if (c) useTopics(c); } catch(e) {}
   try {
@@ -234,31 +270,169 @@ function speak(text){
 }
 
 /* ---------- Spielwelt ----------
-   Alles in "Spur-Einheiten": eine Spur ist 1 breit. z ist die Entfernung nach vorne. */
-const cv = $("#game"), ctx = cv.getContext("2d");
-if (!ctx.roundRect) ctx.roundRect = function(x, y, w, h){ this.rect(x, y, w, h); }; // ältere Browser
-let W = 0, H = 0, DPR = 1;
+   Spiellogik in "Spur-Einheiten" (eine Spur = 1, z = Entfernung nach vorne).
+   Die 3D-Szene rechnet das in Meter um: LANE m pro Spur, ZS m pro z-Einheit. */
+const cv = $("#game");
+const PZ = 1.2;         // wo die Spielfigur steht
+const FAR = 70;
+const LANE = 2.2, ZS = 2;
+const wx = lane => lane * LANE;
+const wz = z => -(z - PZ) * ZS;
+
+const renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true});
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+const SKY = 0xbfe6ff;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 45, 135);
+const camera = new THREE.PerspectiveCamera(60, 1, .1, 300);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7aa860, .95));
+const sun = new THREE.DirectionalLight(0xffffff, .9);
+sun.position.set(6, 12, 8); scene.add(sun);
+
 function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = innerWidth; H = innerHeight;
-  cv.width = W * DPR; cv.height = H * DPR;
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = camera.aspect < .75 ? 72 : 55;   // Hochformat: weiter Blick, damit alle drei Spuren sichtbar sind
+  camera.updateProjectionMatrix();
 }
 addEventListener("resize", resize); resize();
 
-const D = 5;            // Kamera-Abstand (Perspektive)
-const PZ = 1.2;         // wo die Spielfigur steht
-const FAR = 70;
-const horizon = () => H * 0.34;
-const unitPx = () => Math.min(W * 0.3, H * 0.42);
-const scale = z => D / (Math.max(z, -D + 0.5) + D);
-const sy = (z, h = 0) => horizon() + (H * 1.02 - horizon()) * scale(z) - h * unitPx() * scale(z);
-const sx = (x, z) => W / 2 + x * unitPx() * scale(z);
+// Boden, Schotterbett, Schienen
+const mat = c => new THREE.MeshLambertMaterial({color: new THREE.Color(c).convertSRGBToLinear()});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat(0x86c95e));
+ground.rotation.x = -Math.PI / 2; ground.position.z = -100; scene.add(ground);
+const bed = new THREE.Mesh(new THREE.PlaneGeometry(LANE * 3.3, 400), mat(0xc4ae8e));
+bed.rotation.x = -Math.PI / 2; bed.position.set(0, .01, -100); scene.add(bed);
+const railMat = mat(0x8d949e);
+for (const ln of [-1, 0, 1]) for (const r of [-.55, .55]) {
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, 400), railMat);
+  rail.position.set(wx(ln) + r, .13, -100); scene.add(rail);
+}
+const sleeperMat = mat(0x8a6b4a), sleepers = [];
+for (let i = 0; i < 40; i++) {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(LANE * 3.1, .1, .45), sleeperMat);
+  s.position.y = .05; scene.add(s); sleepers.push(s);
+}
+
+// Gestreifte Bretter für Absperrungen und Schranken
+function stripeTexture(color){
+  const c = document.createElement("canvas"); c.width = 128; c.height = 32;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, 128, 32);
+  g.fillStyle = color;
+  for (let x = -32; x < 160; x += 32) { g.beginPath(); g.moveTo(x, 32); g.lineTo(x + 16, 0); g.lineTo(x + 32, 0); g.lineTo(x + 16, 32); g.fill(); }
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+}
+const COLORS = ["#d6333c", "#1f45b5", "#ff8a3d", "#22915a"];
+const stripeMats = COLORS.map(c => new THREE.MeshLambertMaterial({map: stripeTexture(c)}));
+const postMat = mat(0x4a5568);
+
+/* ---------- 3D-Modelle (Kenney, CC0) ---------- */
+const MODELS = {
+  character: "models/platformer/character.glb", coin: "models/platformer/coin.glb", cloud: "models/platformer/cloud.glb",
+  houseA: "models/city/building-small-a.glb", houseB: "models/city/building-small-b.glb", houseC: "models/city/building-small-c.glb",
+  houseD: "models/city/building-small-d.glb", garage: "models/city/building-garage.glb",
+  trees: "models/city/grass-trees.glb", treesTall: "models/city/grass-trees-tall.glb",
+  truckGreen: "models/racing/vehicle-truck-green.glb", truckPurple: "models/racing/vehicle-truck-purple.glb",
+  truckRed: "models/racing/vehicle-truck-red.glb", truckYellow: "models/racing/vehicle-truck-yellow.glb"
+};
+const TPL = {};
+// XHR statt fetch: funktioniert auch in der Android-App (file://)
+function loadBytes(url){
+  return new Promise((ok, fail) => {
+    const x = new XMLHttpRequest(); x.open("GET", url); x.responseType = "arraybuffer";
+    x.onload = () => (x.status === 200 || x.status === 0) && x.response ? ok(x.response) : fail(new Error(url));
+    x.onerror = () => fail(new Error(url)); x.send();
+  });
+}
+const loader = new THREE.GLTFLoader();
+async function loadModels(){
+  await Promise.all(Object.entries(MODELS).map(async ([k, url]) => {
+    try {
+      const buf = await loadBytes(url);
+      TPL[k] = await new Promise((ok, fail) => loader.parse(buf, url.replace(/[^/]+$/, ""), ok, fail));
+    } catch(e) { console.warn("Modell fehlt:", url, e); }
+  }));
+}
+const clone = k => TPL[k] ? TPL[k].scene.clone(true) : null;
+
+// Spielfigur mit Lauf- und Sprung-Animation
+const player = new THREE.Group(); scene.add(player);
+const blob = new THREE.Mesh(new THREE.CircleGeometry(.55, 24), new THREE.MeshBasicMaterial({color: 0, transparent: true, opacity: .2, depthWrite: false}));
+blob.rotation.x = -Math.PI / 2; blob.position.y = .03; scene.add(blob);
+let mixer = null, acts = {}, curAct = null;
+function setupPlayer(){
+  const g = TPL.character;
+  if (g) {
+    const m = g.scene; m.scale.setScalar(1.8); m.position.y = .36; m.rotation.y = Math.PI;
+    player.add(m);
+    mixer = new THREE.AnimationMixer(m);
+    for (const a of g.animations) acts[a.name] = mixer.clipAction(a);
+  } else {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(.35, .8, 4, 8), mat(0x1f45b5));
+    body.position.y = .8; player.add(body);
+  }
+}
+function playAct(name, speed = 1){
+  const a = acts[name]; if (!a || curAct === a) { if (a) a.timeScale = speed; return; }
+  a.reset().play(); a.timeScale = speed;
+  if (curAct) a.crossFadeFrom(curAct, .15, false);
+  curAct = a;
+}
+
+function makeObjMesh(o){
+  const g = new THREE.Group();
+  if (o.type === "coin") {
+    const m = clone("coin");
+    if (m) { m.scale.setScalar(2.4); g.add(m); }
+    else g.add(new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .1, 20).rotateX(Math.PI / 2), mat(0xf5b800)));
+    g.position.y = .9;
+  } else if (o.type === "low") {
+    // Absperrung: drüberspringen
+    const board = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, .5, .15), [postMat, postMat, postMat, postMat, stripeMats[o.c], stripeMats[o.c]]);
+    board.position.y = .75; g.add(board);
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.12, 1, .12), postMat); p.position.set(s * LANE * .38, .5, 0); g.add(p); }
+  } else if (o.type === "high") {
+    // Schranke: drunter durchrutschen
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.15, 3.1, .15), postMat); p.position.set(s * LANE * .45, 1.55, 0); g.add(p); }
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(LANE * .95, .6, .15), [postMat, postMat, postMat, postMat, stripeMats[o.c], stripeMats[o.c]]);
+    bar.position.y = 2.25; g.add(bar);
+  } else {
+    // Lastwagen: Spur wechseln
+    const m = clone(["truckGreen", "truckPurple", "truckRed", "truckYellow"][o.c]);
+    if (m) { m.scale.setScalar(1.45); m.position.set(0, .45, -o.depth * ZS / 2); g.add(m); }
+    else { const b = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, 2.2, o.depth * ZS), mat(COLORS[o.c])); b.position.set(0, 1.1, -o.depth * ZS / 2); g.add(b); }
+  }
+  scene.add(g); return g;
+}
+const HOUSES = ["houseA", "houseB", "houseC", "houseD", "garage"];
+function makeDecoMesh(d){
+  const g = new THREE.Group();
+  const key = d.tree ? (d.h > 2.5 ? "treesTall" : "trees") : HOUSES[Math.floor(d.h * 7) % HOUSES.length];
+  const m = clone(key);
+  if (m) { m.scale.setScalar(d.tree ? 5 : 6.5); m.rotation.y = d.side < 0 ? Math.PI / 2 : -Math.PI / 2; g.add(m); }
+  else { const b = new THREE.Mesh(new THREE.BoxGeometry(5, d.h * 2.5, 5), mat(d.color)); b.position.y = d.h * 1.25; g.add(b); }
+  g.position.x = d.side * (LANE * 1.7 + 4.2);
+  scene.add(g); return g;
+}
+// Wolken
+const clouds = [];
+function addClouds(){
+  for (let i = 0; i < 7; i++) {
+    const m = clone("cloud"); if (!m) return;
+    m.scale.setScalar(6 + Math.random() * 6);
+    m.position.set((Math.random() - .5) * 120, 22 + Math.random() * 14, -40 - Math.random() * 120);
+    scene.add(m); clouds.push(m);
+  }
+}
 
 let G = null; // Spielzustand
 function newGame(){
   G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0,
-       lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set(), stepT:0};
+       lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set()};
 }
 newGame();
 
@@ -269,14 +443,13 @@ function spawnRow(z){
   const n = Math.random() < .35 ? 2 : 1;
   for (let i = 0; i < n; i++){
     const k = kinds[Math.floor(Math.random() * (G.dist < 150 ? 2 : 3))];
-    G.objs.push({type:k, lane:lanes[i], z: k === "train" ? z + 3 : z, depth: k === "train" ? 6 : .5,
-      color: ["#d6333c","#1f45b5","#22915a","#ff8a3d"][Math.floor(Math.random()*4)]});
+    G.objs.push({type:k, lane:lanes[i], z, depth: k === "train" ? 2.1 : .3, c: Math.floor(Math.random()*4)});
   }
   const free = lanes[2];
   if (Math.random() < .7) for (let i = 0; i < 5; i++) G.objs.push({type:"coin", lane:free, z:z + i*1.6, depth:.4});
 }
 function spawnDeco(z){
-  for (const side of [-1, 1]) G.deco.push({side, z, h: 1.5 + Math.random()*2.5, w: 1 + Math.random()*1.2,
+  for (const side of [-1, 1]) G.deco.push({side, z: z + Math.random(), h: 1.5 + Math.random()*2.5,
     color: ["#f2c14e","#e76f51","#90be6d","#9b8ec4","#f4a3a8","#7fb7e8"][Math.floor(Math.random()*6)], tree: Math.random() < .35});
 }
 
@@ -309,7 +482,7 @@ let last = 0;
 function loop(ts){
   const dt = Math.min(.05, (ts - (last || ts)) / 1000); last = ts;
   if (G.running) update(dt);
-  draw();
+  draw(dt);
   requestAnimationFrame(loop);
 }
 function update(dt){
@@ -340,124 +513,42 @@ function update(dt){
 }
 
 /* ---------- Zeichnen ---------- */
-function quad(x1, y1, x2, y2, x3, y3, x4, y4, color){
-  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.lineTo(x4,y4); ctx.closePath(); ctx.fill();
+let shown = [];
+function sync(list, make){
+  for (const it of list) if (!it.mesh) it.mesh = make(it);
 }
-function box(x, z, w, h, depth, front, top, lift = 0){
-  // Quader: Vorderseite bei z, Dach bis z+depth
-  const zf = Math.max(z, -D + .6), zb = z + depth;
-  const l = sx(x - w/2, zf), r = sx(x + w/2, zf), yb = sy(zf, lift), yt = sy(zf, lift + h);
-  const lb = sx(x - w/2, zb), rb = sx(x + w/2, zb), ytb = sy(zb, lift + h);
-  if (depth > .01) quad(l, yt, r, yt, rb, ytb, lb, ytb, top);
-  ctx.fillStyle = front; ctx.fillRect(l, yt, r - l, yb - yt);
-  return {l, r, yt, yb};
-}
-function draw(){
-  const hz = horizon();
-  // Himmel
-  const sky = ctx.createLinearGradient(0, 0, 0, hz);
-  sky.addColorStop(0, "#7cc4f5"); sky.addColorStop(1, "#cfeaff");
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
-  // Wiese
-  ctx.fillStyle = "#8fcf6a"; ctx.fillRect(0, hz, W, H - hz);
-  // Strecke
-  const zf = -1;
-  quad(sx(-1.6, FAR), sy(FAR), sx(1.6, FAR), sy(FAR), sx(1.6, zf), sy(zf), sx(-1.6, zf), sy(zf), "#c9b79c");
-  // Gleise je Spur mit Schwellen
-  const off = (G.dist % 2);
-  for (let k = 0; k < FAR; k += 2){
-    const z = k - off; if (z < -1) continue;
-    for (const ln of [-1, 0, 1]) {
-      const y = sy(z), t = Math.max(1, 6 * scale(z));
-      ctx.fillStyle = "#8a6b4a"; ctx.fillRect(sx(ln - .42, z), y - t/2, sx(ln + .42, z) - sx(ln - .42, z), t);
-    }
+function draw(dt){
+  // Neue Objekte bekommen ein 3D-Modell, verschwundene werden entfernt
+  sync(G.objs, makeObjMesh); sync(G.deco, makeDecoMesh);
+  const alive = new Set();
+  for (const o of G.objs) { if (o.gone) continue; alive.add(o.mesh); o.mesh.position.set(wx(o.lane), o.mesh.position.y, wz(o.z)); }
+  for (const d of G.deco) { alive.add(d.mesh); d.mesh.position.z = wz(d.z); }
+  for (const m of shown) if (!alive.has(m)) scene.remove(m);
+  shown = [...alive];
+  for (const o of G.objs) if (o.type === "coin" && !o.gone) o.mesh.rotation.y = G.t * 3 + o.z;
+  const off = G.dist % 2;
+  sleepers.forEach((s, i) => { s.position.z = wz(i * 2 - off - 1); });
+
+  // Spielfigur
+  const px = wx(G.x);
+  player.position.set(px, G.y * 1.6, 0);
+  blob.position.x = px; blob.scale.setScalar(1 - Math.min(.5, G.y * .3));
+  player.rotation.z = (G.lane - G.x) * -.25;
+  if (G.slide > 0) { player.scale.set(1.1, .55, 1.1); player.rotation.x = -.35; }
+  else { player.scale.set(1, 1, 1); player.rotation.x = 0; }
+  if (mixer) {
+    if (!G.running) playAct("idle");
+    else if (G.y > .05) playAct("jump");
+    else playAct("walk", 1.6 + G.speed / 18);
+    mixer.update(dt);
   }
-  ctx.strokeStyle = "#7d858f"; ctx.lineWidth = 2;
-  for (const ln of [-1, 0, 1]) for (const r of [-.3, .3]) {
-    ctx.beginPath(); ctx.moveTo(sx(ln + r, FAR), sy(FAR)); ctx.lineTo(sx(ln + r, -1), sy(-1)); ctx.stroke();
-  }
-  // Häuser und Bäume am Rand, hinten zuerst
-  const items = [...G.deco.map(d => ({d, z:d.z})), ...G.objs.map(o => ({o, z:o.z}))].sort((a, b) => b.z - a.z);
-  let playerDrawn = false;
-  for (const it of items){
-    if (!playerDrawn && it.z < PZ - .2) { drawPlayer(); playerDrawn = true; }
-    if (it.d) drawDeco(it.d); else drawObj(it.o);
-  }
-  if (!playerDrawn) drawPlayer();
-}
-function drawDeco(d){
-  const x = d.side * (2.2 + d.w / 2);
-  if (d.tree){
-    const s = box(x, d.z, .25, d.h * .5, 0, "#7a5230", "#7a5230");
-    const cx = (s.l + s.r) / 2, rr = unitPx() * scale(d.z) * .7;
-    ctx.fillStyle = "#3f9b4b"; ctx.beginPath(); ctx.arc(cx, s.yt - rr * .6, rr, 0, 7); ctx.fill();
-  } else {
-    const s = box(x, d.z, d.w, d.h, 1.2, d.color, "rgba(0,0,0,.15)");
-    ctx.fillStyle = "rgba(255,255,255,.7)";
-    const ww = (s.r - s.l) / 5, wh = (s.yb - s.yt) / 6;
-    for (let i = 1; i < 5; i += 2) for (let j = 1; j < 5; j += 2) ctx.fillRect(s.l + i * ww, s.yt + j * wh, ww * .8, wh * .8);
-  }
-}
-function drawObj(o){
-  if (o.z > FAR) return;
-  if (o.type === "coin"){
-    const r = Math.max(2, unitPx() * scale(o.z) * .16), cx = sx(o.lane, o.z), cy = sy(o.z, .6);
-    const w = Math.abs(Math.cos(G.t * 4 + o.z)) * r + 1;
-    ctx.fillStyle = "#f5b800"; ctx.beginPath(); ctx.ellipse(cx, cy, w, r, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = "#ffe066"; ctx.beginPath(); ctx.ellipse(cx, cy, w * .6, r * .6, 0, 0, 7); ctx.fill();
-    return;
-  }
-  if (o.type === "low"){
-    // Absperrung: drüberspringen
-    const s = box(o.lane, o.z, .9, .55, .12, "#fff", "#ddd");
-    ctx.fillStyle = o.color; const sw = (s.r - s.l) / 6;
-    for (let i = 0; i < 6; i += 2) ctx.fillRect(s.l + i * sw, s.yt, sw, (s.yb - s.yt) * .55);
-    return;
-  }
-  if (o.type === "high"){
-    // Schranke: drunter durchrutschen
-    box(o.lane - .42, o.z, .08, 1.5, .08, "#555", "#444");
-    box(o.lane + .42, o.z, .08, 1.5, .08, "#555", "#444");
-    const s = box(o.lane, o.z, .95, .35, .1, "#fff", "#ddd", 1.05);
-    ctx.fillStyle = o.color; const sw = (s.r - s.l) / 6;
-    for (let i = 0; i < 6; i += 2) ctx.fillRect(s.l + i * sw, s.yt, sw, s.yb - s.yt);
-    return;
-  }
-  // Zug: Spur wechseln
-  const s = box(o.lane, o.z, .92, 1.9, o.depth, o.color, "rgba(255,255,255,.35)");
-  const w = s.r - s.l, h = s.yb - s.yt;
-  ctx.fillStyle = "#cfeaff"; ctx.fillRect(s.l + w * .12, s.yt + h * .12, w * .76, h * .3);
-  ctx.fillStyle = "#ffe066";
-  ctx.beginPath(); ctx.arc(s.l + w * .22, s.yt + h * .7, w * .07, 0, 7); ctx.arc(s.r - w * .22, s.yt + h * .7, w * .07, 0, 7); ctx.fill();
-}
-function drawPlayer(){
-  const sc = scale(PZ), u = unitPx() * sc;
-  const cx = sx(G.x, PZ), ground = sy(PZ), yb = ground - G.y * u;
-  // Schatten
-  ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(cx, ground, u * .28, u * .07, 0, 0, 7); ctx.fill();
-  const sliding = G.slide > 0;
-  const hgt = sliding ? .55 : 1.15;
-  const run = G.running && G.y === 0 && !sliding ? Math.sin(G.t * 16) : 0;
-  ctx.lineCap = "round";
-  // Beine
-  ctx.strokeStyle = "#1d2433"; ctx.lineWidth = u * .1;
-  const hipY = yb - u * hgt * .42;
-  ctx.beginPath(); ctx.moveTo(cx - u*.06, hipY); ctx.lineTo(cx - u*.06 + run * u * .14, yb - u*.02);
-  ctx.moveTo(cx + u*.06, hipY); ctx.lineTo(cx + u*.06 - run * u * .14, yb - u*.02); ctx.stroke();
-  // Körper (Hoodie)
-  ctx.fillStyle = "#1f45b5";
-  const bodyTop = yb - u * hgt * .8;
-  ctx.beginPath(); ctx.roundRect(cx - u*.17, bodyTop, u*.34, hipY - bodyTop + u*.04, u*.08); ctx.fill();
-  // Arme
-  ctx.strokeStyle = "#1f45b5"; ctx.lineWidth = u * .09;
-  ctx.beginPath(); ctx.moveTo(cx - u*.16, bodyTop + u*.08); ctx.lineTo(cx - u*.26 - run * u * .08, bodyTop + u*.3);
-  ctx.moveTo(cx + u*.16, bodyTop + u*.08); ctx.lineTo(cx + u*.26 + run * u * .08, bodyTop + u*.3); ctx.stroke();
-  // Rucksack
-  ctx.fillStyle = "#ffd84a"; ctx.beginPath(); ctx.roundRect(cx - u*.13, bodyTop + u*.06, u*.26, u*.22, u*.05); ctx.fill();
-  // Kopf mit Kappe (von hinten)
-  const hr = u * .14, hy = bodyTop - hr * .9;
-  ctx.fillStyle = "#7a4a2a"; ctx.beginPath(); ctx.arc(cx, hy, hr, 0, 7); ctx.fill();
-  ctx.fillStyle = "#d6333c"; ctx.beginPath(); ctx.arc(cx, hy - hr * .15, hr * 1.02, Math.PI, 0); ctx.fill();
+
+  // Kamera folgt der Figur
+  camera.position.x += (px * .6 - camera.position.x) * Math.min(1, dt * 6);
+  camera.position.y = 6.2; camera.position.z = 10;
+  camera.lookAt(camera.position.x, 1, -12);
+  for (const c of clouds) { c.position.z += dt * 1.5; if (c.position.z > 10) c.position.z = -160; }
+  renderer.render(scene, camera);
 }
 
 /* ---------- Unfall und Vokabel-Frage ---------- */
@@ -560,6 +651,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 showBest();
+bindPick();
+let modelsReady = false;
+loadModels().then(() => { setupPlayer(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
 loadVocab();
 requestAnimationFrame(loop);
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});

@@ -1,0 +1,6 @@
+3D-Modelle und Texturen in diesem Ordner: Kenney (www.kenney.nl), Lizenz CC0 1.0
+https://creativecommons.org/publicdomain/zero/1.0/
+
+platformer/  aus https://github.com/KenneyNL/Starter-Kit-3D-Platformer
+city/        aus https://github.com/KenneyNL/Starter-Kit-City-Builder
+racing/      aus https://github.com/KenneyNL/Starter-Kit-Racing

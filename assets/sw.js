@@ -1,10 +1,29 @@
 // Offline-Modus für die Webversion. Bei Änderungen an Dateien VERSION hochzählen.
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE = "vokabelheft-" + VERSION;
 const FILES = [
   "./",
   "index.html",
   "runner.html",
+  "models/city/Textures/colormap.png",
+  "models/city/building-garage.glb",
+  "models/city/building-small-a.glb",
+  "models/city/building-small-b.glb",
+  "models/city/building-small-c.glb",
+  "models/city/building-small-d.glb",
+  "models/city/grass-trees-tall.glb",
+  "models/city/grass-trees.glb",
+  "models/platformer/Textures/colormap.png",
+  "models/platformer/character.glb",
+  "models/platformer/cloud.glb",
+  "models/platformer/coin.glb",
+  "models/racing/Textures/colormap.png",
+  "models/racing/vehicle-truck-green.glb",
+  "models/racing/vehicle-truck-purple.glb",
+  "models/racing/vehicle-truck-red.glb",
+  "models/racing/vehicle-truck-yellow.glb",
+  "vendor/GLTFLoader.js",
+  "vendor/three.min.js",
   "manifest.webmanifest",
   "fonts/Andika-400.woff2",
   "fonts/Andika-700.woff2",
