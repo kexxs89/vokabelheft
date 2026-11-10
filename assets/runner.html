@@ -743,7 +743,7 @@ function lev(a, b){
 const isLetter = c => /[a-z]/i.test(c);
 function ask(reason){
   const w = pickWord();
-  current = {w, reason, tries:0, hints:0, done:false, ok:false};
+  current = {w, reason, tries:0, hints:0, maxHints:maxHints(w.en), done:false, ok:false};
   const titles = {
     crash: ["Autsch! 💥 Schreib die Vokabel, dann geht's weiter.", " bad"],
     checkpoint: [`🏁 ${Math.floor(G.dist / 100) * 100} Punkte! Vokabel-Zeit!`, ""],
@@ -755,7 +755,7 @@ function ask(reason){
   $("#qDe").innerHTML = deHTML(w.de);
   const inp = $("#qInput");
   inp.value = ""; inp.className = "q-input"; inp.disabled = false;
-  $("#qTools").hidden = false; $("#qHint").disabled = false;
+  $("#qTools").hidden = false; showHintBtn();
   $("#qMsg").textContent = ""; $("#qMsg").className = "q-msg";
   $("#qSol").hidden = true; $("#qSpeak").hidden = true; $("#qNext").hidden = true;
   $("#questionScreen").hidden = false;
@@ -776,14 +776,25 @@ function checkAnswer(){
   $("#qMsg").className = "q-msg bad";
   inp.select();
 }
+// Tipps verraten nur die ersten Buchstaben, den Rest muss man selbst schreiben
+function maxHints(en){
+  const n = [...en].filter(isLetter).length;
+  return Math.max(0, Math.min(n <= 4 ? 1 : n <= 8 ? 2 : 3, n - 2));
+}
+function showHintBtn(){
+  const c = current, left = c.maxHints - c.hints;
+  $("#qHint").disabled = left <= 0;
+  $("#qHint").textContent = left > 0 ? `💡 Tipp (${left})` : "💡 Kein Tipp mehr";
+}
 function hint(){
-  const c = current; if (!c || c.done) return;
-  const inp = $("#qInput"), en = c.w.en, typed = inp.value.toLowerCase();
-  let p = 0; while (p < typed.length && p < en.length && typed[p] === en[p].toLowerCase()) p++;
-  let end = p + 1; while (end < en.length && !isLetter(en[end - 1])) end++;
-  inp.value = en.slice(0, Math.min(end, en.length)); inp.className = "q-input";
-  c.hints++; inp.focus();
-  if (inp.value.length >= en.length) $("#qHint").disabled = true;
+  const c = current; if (!c || c.done || c.hints >= c.maxHints) return;
+  c.hints++;
+  // die ersten c.hints Buchstaben zeigen (Leerzeichen/Bindestriche dazwischen mit)
+  const en = c.w.en; let end = 0, letters = 0;
+  while (end < en.length && letters < c.hints) { if (isLetter(en[end])) letters++; end++; }
+  const inp = $("#qInput");
+  inp.value = en.slice(0, end); inp.className = "q-input"; inp.focus();
+  showHintBtn();
 }
 function finishQ(ok){
   const c = current, w = c.w; c.done = true; c.ok = ok;
