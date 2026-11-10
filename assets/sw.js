@@ -1,5 +1,5 @@
 // Offline-Modus für die Webversion. Bei Änderungen an Dateien VERSION hochzählen.
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE = "vokabelheft-" + VERSION;
 const FILES = [
   "./",
@@ -35,7 +35,8 @@ const FILES = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: "reload" holt alles frisch vom Server, nicht aus dem Browser-Zwischenspeicher
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, {cache: "reload"})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
@@ -50,7 +51,7 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
   if (req.mode === "navigate") {
     // Seite: erst Internet (damit Updates ankommen), sonst gespeicherte Version
-    e.respondWith(fetch(req).then(r => {
+    e.respondWith(fetch(req, {cache: "no-store"}).then(r => {
       if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return r;
     }).catch(() => caches.match(req, {ignoreSearch: true}).then(hit => hit || caches.match("index.html"))));

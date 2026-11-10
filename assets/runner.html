@@ -871,7 +871,15 @@ showWallet(); renderUse();
 loadModels().then(() => { setupPlayer(); applySkin(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
 loadVocab();
 requestAnimationFrame(loop);
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  // Bei jedem Öffnen nach einer neuen Version schauen; ist eine da, einmal neu laden (aber nie mitten im Spiel)
+  const hadSW = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js", {updateViaCache: "none"}).then(r => r.update()).catch(() => {});
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadSW && !window._reloaded && !$("#startScreen").hidden) { window._reloaded = true; location.reload(); }
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {}); });
+}
 </script>
 </body>
 </html>
