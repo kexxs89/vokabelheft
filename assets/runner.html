@@ -69,13 +69,39 @@ p{margin:0}
 .q-ask{font-size:18px;color:var(--muted)}
 .q-de{font-family:var(--font-display);font-size:32px;line-height:1.1;color:var(--text)}
 .q-de .art{color:var(--muted);font-size:.6em;margin-right:6px;font-family:var(--font-body);font-weight:700}
-.answers{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
-.answers button{background:#fff;border:3px solid var(--line);border-radius:16px;padding:12px 8px;font-size:20px;font-weight:700;
-  min-height:60px;word-break:break-word;box-shadow:0 3px 0 var(--line)}
-.answers button:active{transform:translateY(2px)}
-.answers button.ok{border-color:var(--green);background:#e2f5ea;color:var(--green)}
-.answers button.bad{border-color:var(--red);background:#fde8e8;color:var(--red)}
-.answers button:disabled{cursor:default}
+#questionScreen{align-items:start}
+.q-input{width:100%;font-family:var(--font-body);font-size:30px;font-weight:700;color:var(--ink);text-align:center;padding:10px 12px;
+  border-radius:16px;border:3px solid var(--line);background:#fff;outline:none}
+.q-input:focus{border-color:var(--ink)}
+.q-input.ok{border-color:var(--green);color:var(--green)} .q-input.bad{border-color:var(--red);color:var(--red)}
+.q-tools{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.tool{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:14px;border:2px solid var(--line);background:#fff;font-weight:700;font-size:17px}
+.tool.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.tool:disabled{opacity:.4}
+.shake{animation:shake .4s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.q-sol{font-size:30px;font-weight:700}
+.q-yours{font-size:20px;color:var(--red);text-decoration:line-through}
+
+/* Shop */
+.wallet{font-size:20px;font-weight:700}
+.row-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.shop-tabs{display:flex;gap:8px}
+.shop-tabs button{border:2px solid var(--line);background:#fff;border-radius:999px;padding:6px 16px;font-weight:700}
+.shop-tabs button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.shop-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;width:100%;max-height:50vh;overflow:auto;touch-action:pan-y;padding:2px}
+.shop-item{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:14px}
+.shop-item.active{border-color:var(--green);background:#e2f5ea}
+.shop-item .sw{width:44px;height:44px;border-radius:50%;border:3px solid rgba(0,0,0,.15)}
+.shop-item .ico{font-size:34px;line-height:1}
+.shop-item b{font-size:16px}
+.shop-item small{color:var(--muted);text-align:center;line-height:1.2}
+.shop-item button{margin-top:4px;border:none;border-radius:12px;padding:6px 12px;font-weight:700;background:var(--ink);color:#fff;font-size:15px}
+.shop-item button:disabled{background:#9aa6bf}
+.use-items{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.use-items button{border:2px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-weight:700;font-size:15px}
+.use-items button[aria-pressed="true"]{border-color:var(--green);background:#e2f5ea}
+.boost{display:flex;gap:4px}
 .q-msg{font-family:var(--font-display);font-size:24px;min-height:30px}
 .q-msg.ok{color:var(--green)} .q-msg.bad{color:var(--red)}
 .speak{border:2px solid var(--line);background:#fff;border-radius:999px;width:44px;height:44px;font-size:20px}
@@ -84,7 +110,7 @@ p{margin:0}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
 .stats div{background:#fff;border:2px solid var(--line);border-radius:14px;padding:8px}
 .stats b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
-@media (max-width:380px){ .answers button{font-size:17px} .q-de{font-size:27px} }
+@media (max-width:380px){ .q-de{font-size:27px} .q-pic{font-size:56px} }
 </style>
 </head>
 <body>
@@ -96,6 +122,7 @@ p{margin:0}
 <div class="hud" id="hud" hidden>
   <span class="pill">🏃 <span id="score">0</span></span>
   <span class="pill">🪙 <span id="coins">0</span></span>
+  <span class="pill boost" id="boosts" hidden></span>
   <span class="grow"></span>
   <button id="pauseBtn" aria-label="Pause">⏸</button>
 </div>
@@ -103,7 +130,9 @@ p{margin:0}
 <div class="overlay" id="startScreen">
   <div class="card">
     <h1>Vokabel-Rennen</h1>
-    <p>Lauf so weit du kannst! Wenn du gegen etwas rennst, beantwortest du eine Vokabel und es geht weiter.</p>
+    <p>Lauf so weit du kannst! Alle 500 Punkte und bei jedem Unfall schreibst du eine Vokabel. Richtige Vokabeln bringen Münzen für den Shop.</p>
+    <p class="wallet">🪙 <span class="walletNum">0</span></p>
+    <button class="big-btn green" id="shopBtn" style="font-size:20px;padding:8px 24px">🛍️ Shop</button>
     <div class="help">
       <b>⬅️➡️</b><span>Wischen: Spur wechseln</span>
       <b>⬆️</b><span>Wischen: springen (über Absperrungen)</span>
@@ -117,6 +146,10 @@ p{margin:0}
       <button class="link" id="noUnits">Keins</button>
     </div>
     <p class="units" id="unitInfo">Wörter werden geladen …</p>
+    <div id="useBox" hidden>
+      <p class="muted">Für diese Runde benutzen:</p>
+      <div class="use-items" id="useItems"></div>
+    </div>
     <p class="muted" id="bestInfo"></p>
     <button class="big-btn" id="startBtn" disabled>Los geht's!</button>
     <a class="link" href="index.html">← Zum Vokabelheft</a>
@@ -137,10 +170,32 @@ p{margin:0}
     <div class="q-pic" id="qPic"></div>
     <p class="q-ask">Wie heißt das auf Englisch?</p>
     <p class="q-de" id="qDe"></p>
-    <div class="answers" id="answers"></div>
+    <form id="qForm" style="width:100%" autocomplete="off">
+      <input class="q-input" id="qInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        enterkeyhint="done" placeholder="auf Englisch …" aria-label="Englisches Wort eintippen">
+    </form>
+    <div class="q-tools" id="qTools">
+      <button class="tool" id="qHint" type="button">💡 Tipp</button>
+      <button class="tool primary" id="qCheck" type="button">✓ Prüfen</button>
+    </div>
     <p class="q-msg" id="qMsg"></p>
+    <div class="q-sol" id="qSol" hidden></div>
     <button class="speak" id="qSpeak" aria-label="Anhören" hidden>🔊</button>
     <button class="big-btn green" id="qNext" hidden>Weiter</button>
+  </div>
+</div>
+
+<div class="overlay" id="shopScreen" hidden>
+  <div class="card">
+    <h2>🛍️ Shop</h2>
+    <p class="wallet">🪙 <span class="walletNum">0</span></p>
+    <div class="shop-tabs">
+      <button id="tabSkins" aria-pressed="true">Skins</button>
+      <button id="tabItems" aria-pressed="false">Items</button>
+    </div>
+    <div class="shop-list" id="shopList"></div>
+    <p class="muted" id="shopMsg">Münzen bekommst du beim Laufen und für richtige Vokabeln.</p>
+    <button class="big-btn" id="shopClose" style="font-size:20px;padding:8px 24px">Fertig</button>
   </div>
 </div>
 
@@ -149,12 +204,16 @@ p{margin:0}
     <h2>Geschafft!</h2>
     <div class="stats">
       <div>Strecke<b id="endScore">0</b></div>
-      <div>Münzen<b id="endCoins">0</b></div>
+      <div>Münzen<b id="endCoins" style="font-size:18px">0</b></div>
       <div>Vokabeln richtig<b id="endRight">0</b></div>
       <div>Rekord<b id="endBest">0</b></div>
     </div>
     <p class="muted" id="endNew"></p>
-    <button class="big-btn" id="againBtn">Nochmal</button>
+    <p class="wallet">Im Geldbeutel: 🪙 <span class="walletNum">0</span></p>
+    <div class="row-btns">
+      <button class="big-btn" id="againBtn">Nochmal</button>
+      <button class="big-btn green" id="endShop">🛍️ Shop</button>
+    </div>
     <a class="link" href="index.html">← Zum Vokabelheft</a>
   </div>
 </div>
@@ -187,7 +246,7 @@ function parseVocab(data){
     const words = ws.map(w => {
       if (!w || !w.de || !w.en) return null;
       const alts = (Array.isArray(w.en) ? w.en : String(w.en).split("|")).map(x => String(x).trim()).filter(Boolean);
-      return alts.length ? {id:id+":"+alts[0], de:String(w.de).trim(), en:alts[0], em:String(w.bild || w.em || t.bild || "📝"), topic:id} : null;
+      return alts.length ? {id:id+":"+alts[0], de:String(w.de).trim(), en:alts[0], alts, em:String(w.bild || w.em || t.bild || "📝"), topic:id} : null;
     }).filter(Boolean);
     if (words.length) out.push({id, name:String(t.name), em:String(t.bild || t.em || words[0].em), words});
   });
@@ -429,10 +488,12 @@ function addClouds(){
   }
 }
 
+const QUIZ_EVERY = 500; // alle 500 Punkte kommt eine Vokabel
 let G = null; // Spielzustand
 function newGame(){
-  G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0,
-       lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set()};
+  G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0, bonus:0,
+       lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set(),
+       nextQuiz:QUIZ_EVERY, magnet:false, double:false, superjump:false};
 }
 newGame();
 
@@ -455,9 +516,10 @@ function spawnDeco(z){
 
 /* ---------- Steuerung ---------- */
 function move(dir){ if (!G.running) return; G.lane = Math.max(-1, Math.min(1, G.lane + dir)); }
-function jump(){ if (!G.running || G.y > .01) return; G.vy = 8.6; G.slide = 0; sfx.jump(); }
+function jump(){ if (!G.running || G.y > .01) return; G.vy = G.superjump ? 10.5 : 8.6; G.slide = 0; sfx.jump(); }
 function slide(){ if (!G.running) return; G.slide = .75; if (G.y > .01) G.vy = -12; }
 addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
   const k = e.key;
   if (k === "ArrowLeft" || k === "a") move(-1);
   else if (k === "ArrowRight" || k === "d") move(1);
@@ -502,14 +564,21 @@ function update(dt){
 
   const lane = Math.round(G.x);
   for (const o of G.objs){
-    if (o.lane !== lane || o.gone) continue;
+    if (o.gone) continue;
+    if (o.type === "coin"){
+      // Mit Magnet: Münzen aus allen Spuren in der Nähe
+      const near = G.magnet ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && PZ >= o.z - .35 && PZ <= o.z + o.depth + .1);
+      if (near) { o.gone = true; addCoins(G.double ? 2 : 1); sfx.coin(); }
+      continue;
+    }
+    if (o.lane !== lane) continue;
     if (PZ < o.z - .35 || PZ > o.z + o.depth + .1) continue;
-    if (o.type === "coin"){ o.gone = true; G.coins++; sfx.coin(); continue; }
     const hit = o.type === "train" || (o.type === "low" && G.y < .75) || (o.type === "high" && G.slide <= 0);
     if (hit) { crash(); return; }
   }
   $("#score").textContent = Math.floor(G.dist);
   $("#coins").textContent = G.coins;
+  if (G.dist >= G.nextQuiz) { G.nextQuiz += QUIZ_EVERY; checkpoint(); }
 }
 
 /* ---------- Zeichnen ---------- */
@@ -551,7 +620,97 @@ function draw(dt){
   renderer.render(scene, camera);
 }
 
-/* ---------- Unfall und Vokabel-Frage ---------- */
+/* ---------- Münzen, Shop, Skins, Items ---------- */
+const SHOP_KEY = "vokabelheft-rennen-shop";
+const SKINS = [
+  {id:"standard", name:"Standard", color:"#ffffff", price:0},
+  {id:"rot", name:"Feuerrot", color:"#ff6b6b", price:50},
+  {id:"gruen", name:"Grasgrün", color:"#6bdc7a", price:50},
+  {id:"blau", name:"Himmelblau", color:"#6bb8ff", price:50},
+  {id:"pink", name:"Pink", color:"#ff8fd2", price:80},
+  {id:"orange", name:"Orange", color:"#ffb15c", price:80},
+  {id:"lila", name:"Lila", color:"#b48cff", price:100},
+  {id:"nacht", name:"Nacht", color:"#6a6f8a", price:150},
+  {id:"gold", name:"Gold", color:"#ffd84a", price:300}
+];
+const ITEMS = [
+  {id:"magnet", icon:"🧲", name:"Münz-Magnet", desc:"Sammelt eine Runde lang alle Münzen in der Nähe ein.", price:40},
+  {id:"double", icon:"✖️2", name:"Doppel-Münzen", desc:"Jede Münze zählt eine Runde lang doppelt.", price:60},
+  {id:"superjump", icon:"🦘", name:"Super-Sprung", desc:"Eine Runde lang springst du höher.", price:30}
+];
+let shop = {coins:0, skins:["standard"], skin:"standard", items:{}, use:{}};
+try { const s = JSON.parse(localStorage.getItem(SHOP_KEY)); if (s) shop = Object.assign(shop, s); } catch(e) {}
+function saveShop(){ try { localStorage.setItem(SHOP_KEY, JSON.stringify(shop)); } catch(e) {} }
+function showWallet(){ document.querySelectorAll(".walletNum").forEach(el => el.textContent = shop.coins); }
+function addCoins(n){ G.coins += n; shop.coins += n; }
+
+function applySkin(){
+  const s = SKINS.find(x => x.id === shop.skin) || SKINS[0];
+  player.traverse(o => { if (o.isMesh && o.material && o.material.color) o.material.color.set(s.color).convertSRGBToLinear(); });
+}
+let shopTab = "skins";
+function renderShop(){
+  showWallet();
+  $("#tabSkins").setAttribute("aria-pressed", shopTab === "skins");
+  $("#tabItems").setAttribute("aria-pressed", shopTab === "items");
+  if (shopTab === "skins") {
+    $("#shopList").innerHTML = SKINS.map(s => {
+      const own = shop.skins.includes(s.id), on = shop.skin === s.id;
+      const btn = on ? `<button disabled>Angezogen</button>` : own ? `<button data-wear="${s.id}">Anziehen</button>`
+        : `<button data-buy="${s.id}" ${shop.coins < s.price ? "disabled" : ""}>🪙 ${s.price}</button>`;
+      return `<div class="shop-item${on ? " active" : ""}"><span class="sw" style="background:${s.color}"></span><b>${s.name}</b>${btn}</div>`;
+    }).join("");
+  } else {
+    $("#shopList").innerHTML = ITEMS.map(it => {
+      const n = shop.items[it.id] || 0;
+      return `<div class="shop-item"><span class="ico">${it.icon}</span><b>${it.name}</b><small>${it.desc}</small>
+        <small>Du hast: ${n}</small><button data-item="${it.id}" ${shop.coins < it.price ? "disabled" : ""}>🪙 ${it.price}</button></div>`;
+    }).join("");
+  }
+}
+$("#shopList").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.buy) {
+    const s = SKINS.find(x => x.id === b.dataset.buy);
+    if (shop.coins < s.price) return;
+    shop.coins -= s.price; shop.skins.push(s.id); shop.skin = s.id;
+    $("#shopMsg").textContent = `Neuer Skin: ${s.name}! 🎉`; sfx.ok();
+  } else if (b.dataset.wear) {
+    shop.skin = b.dataset.wear; sfx.tick();
+  } else if (b.dataset.item) {
+    const it = ITEMS.find(x => x.id === b.dataset.item);
+    if (shop.coins < it.price) return;
+    shop.coins -= it.price; shop.items[it.id] = (shop.items[it.id] || 0) + 1; shop.use[it.id] = true;
+    $("#shopMsg").textContent = `${it.name} gekauft! Du kannst es beim nächsten Start benutzen.`; sfx.ok();
+  }
+  saveShop(); applySkin(); renderShop(); renderUse();
+});
+$("#tabSkins").onclick = () => { shopTab = "skins"; renderShop(); };
+$("#tabItems").onclick = () => { shopTab = "items"; renderShop(); };
+$("#shopBtn").onclick = () => { $("#shopMsg").textContent = "Münzen bekommst du beim Laufen und für richtige Vokabeln."; renderShop(); $("#shopScreen").hidden = false; };
+$("#shopClose").onclick = () => { $("#shopScreen").hidden = true; showWallet(); };
+$("#endShop").onclick = () => $("#shopBtn").click();
+// Gekaufte Items für die nächste Runde an- oder abwählen
+function renderUse(){
+  const owned = ITEMS.filter(it => (shop.items[it.id] || 0) > 0);
+  $("#useBox").hidden = !owned.length;
+  $("#useItems").innerHTML = owned.map(it => `<button data-use="${it.id}" aria-pressed="${!!shop.use[it.id]}">${it.icon} ${it.name} (${shop.items[it.id]})</button>`).join("");
+}
+$("#useItems").addEventListener("click", e => {
+  const b = e.target.closest("[data-use]"); if (!b) return;
+  shop.use[b.dataset.use] = !shop.use[b.dataset.use]; saveShop(); renderUse();
+});
+function useItems(){
+  const on = [];
+  for (const it of ITEMS) {
+    if (shop.use[it.id] && (shop.items[it.id] || 0) > 0) { shop.items[it.id]--; G[it.id] = true; on.push(it.icon); }
+    if (!shop.items[it.id]) shop.use[it.id] = false;
+  }
+  saveShop();
+  $("#boosts").hidden = !on.length; $("#boosts").textContent = on.join(" ");
+}
+
+/* ---------- Unfall, 500er-Marke und Vokabel-Frage ---------- */
 let current = null;
 function pickWord(){
   const pool = POOL.filter(w => !G.asked.has(w.id));
@@ -562,51 +721,103 @@ function pickWord(){
   return w;
 }
 function crash(){
-  G.running = false; sfx.crash();
+  G.running = false; sfx.crash(); saveShop();
   if (navigator.vibrate) try { navigator.vibrate(120); } catch(e) {}
-  setTimeout(() => ask(true), 350);
+  setTimeout(() => ask("crash"), 350);
 }
-function ask(first){
+function checkpoint(){
+  G.running = false; sfx.tick(); saveShop();
+  setTimeout(() => ask("checkpoint"), 200);
+}
+// Gleiche Prüfung wie im Vokabelheft: Groß/Klein, Satzzeichen und "to"/"the"/"a" am Anfang sind egal
+function norm(s){
+  return s.toLowerCase().normalize("NFC").trim().replace(/^(the|a|an|to)\s+/, "").replace(/[^a-z]/g, "");
+}
+function lev(a, b){
+  const d = Array.from({length:a.length+1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+const isLetter = c => /[a-z]/i.test(c);
+function ask(reason){
   const w = pickWord();
-  // Falsche Antworten möglichst aus derselben Unit, damit es nicht zu leicht wird
-  const other = x => x.en.toLowerCase() !== w.en.toLowerCase();
-  const wrongs = [...shuffle(POOL.filter(x => other(x) && x.topic === w.topic)), ...shuffle(POOL.filter(x => other(x) && x.topic !== w.topic))];
-  const opts = [w.en];
-  for (const x of wrongs) { if (opts.length >= 4) break; if (!opts.some(o => o.toLowerCase() === x.en.toLowerCase())) opts.push(x.en); }
-  current = {w, done:false};
-  $("#qTitle").textContent = first ? "Autsch! 💥 Beantworte die Vokabel, dann geht's weiter." : "Noch eine Vokabel!";
-  $("#qTitle").className = "q-msg" + (first ? " bad" : "");
+  current = {w, reason, tries:0, hints:0, done:false, ok:false};
+  const titles = {
+    crash: ["Autsch! 💥 Schreib die Vokabel, dann geht's weiter.", " bad"],
+    checkpoint: [`🏁 ${Math.floor(G.dist / 100) * 100} Punkte! Vokabel-Zeit!`, ""],
+    again: ["Noch eine Vokabel!", ""]
+  };
+  $("#qTitle").textContent = titles[reason][0];
+  $("#qTitle").className = "q-msg" + titles[reason][1];
   $("#qPic").textContent = w.em;
   $("#qDe").innerHTML = deHTML(w.de);
+  const inp = $("#qInput");
+  inp.value = ""; inp.className = "q-input"; inp.disabled = false;
+  $("#qTools").hidden = false; $("#qHint").disabled = false;
   $("#qMsg").textContent = ""; $("#qMsg").className = "q-msg";
-  $("#qSpeak").hidden = true; $("#qNext").hidden = true;
-  $("#answers").innerHTML = shuffle(opts).map(o => `<button data-a="${esc(o)}">${esc(o)}</button>`).join("");
+  $("#qSol").hidden = true; $("#qSpeak").hidden = true; $("#qNext").hidden = true;
   $("#questionScreen").hidden = false;
+  setTimeout(() => inp.focus(), 60);
 }
-$("#answers").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b || current.done) return;
-  current.done = true;
-  const w = current.w, ok = b.dataset.a === w.en;
+function checkAnswer(){
+  const c = current; if (!c || c.done) return;
+  const inp = $("#qInput"), v = norm(inp.value);
+  if (!v) { inp.focus(); return; }
+  c.typed = inp.value.trim();
+  if (c.w.alts.some(a => norm(a) === v)) return finishQ(true);
+  c.tries++;
+  inp.className = "q-input bad"; inp.classList.remove("shake"); void inp.offsetWidth; inp.classList.add("shake");
+  if (c.tries >= 2) return finishQ(false);
+  sfx.bad();
+  const close = Math.min(...c.w.alts.map(a => lev(norm(a), v)));
+  $("#qMsg").textContent = close <= 2 ? "Ganz knapp! Schau nochmal genau." : "Leider nicht. Versuch's nochmal oder nimm einen Tipp.";
+  $("#qMsg").className = "q-msg bad";
+  inp.select();
+}
+function hint(){
+  const c = current; if (!c || c.done) return;
+  const inp = $("#qInput"), en = c.w.en, typed = inp.value.toLowerCase();
+  let p = 0; while (p < typed.length && p < en.length && typed[p] === en[p].toLowerCase()) p++;
+  let end = p + 1; while (end < en.length && !isLetter(en[end - 1])) end++;
+  inp.value = en.slice(0, Math.min(end, en.length)); inp.className = "q-input";
+  c.hints++; inp.focus();
+  if (inp.value.length >= en.length) $("#qHint").disabled = true;
+}
+function finishQ(ok){
+  const c = current, w = c.w; c.done = true; c.ok = ok;
+  const inp = $("#qInput"); inp.disabled = true;
   const rec = store.words[w.id] || {lvl:0, r:0, f:0};
-  document.querySelectorAll("#answers button").forEach(x => { x.disabled = true; if (x.dataset.a === w.en) x.classList.add("ok"); });
+  $("#qTools").hidden = true;
   if (ok) {
-    rec.r++; rec.lvl = Math.min(LEARNED, rec.lvl + 1); store.stars++; G.right++;
-    $("#qMsg").textContent = "Richtig! ⭐ Weiter geht's!"; $("#qMsg").className = "q-msg ok"; sfx.ok();
+    // Belohnung: ohne Hilfe am meisten
+    const reward = c.tries === 0 && c.hints === 0 ? 10 : c.hints === 0 ? 5 : 3;
+    rec.r++; if (c.tries === 0 && c.hints === 0) rec.lvl = Math.min(LEARNED, rec.lvl + 1);
+    store.stars++; G.right++; addCoins(reward); G.bonus += reward;
+    inp.className = "q-input ok";
+    $("#qMsg").textContent = `Richtig! ⭐ +${reward} 🪙`; $("#qMsg").className = "q-msg ok"; sfx.ok();
+    $("#qNext").textContent = "Weiterlaufen";
   } else {
     rec.f++; rec.lvl = 0; G.wrong++;
-    b.classList.add("bad");
-    $("#qMsg").textContent = `Leider falsch. Richtig ist: ${w.en}`; $("#qMsg").className = "q-msg bad"; sfx.bad();
+    $("#qMsg").textContent = "Schade! So schreibt man es:"; $("#qMsg").className = "q-msg bad"; sfx.bad();
+    $("#qSol").innerHTML = `<span class="q-yours">${esc(c.typed || "")}</span> ${esc(w.en)}`; $("#qSol").hidden = false;
+    $("#qNext").textContent = c.reason === "checkpoint" ? "Weiterlaufen" : "Nächste Vokabel";
   }
-  store.words[w.id] = rec; save();
-  $("#qSpeak").hidden = false;
+  store.words[w.id] = rec; save(); saveShop();
+  $("#qSpeak").hidden = false; $("#qNext").hidden = false;
   setTimeout(() => speak(w.en), 300);
-  $("#qNext").textContent = ok ? "Weiterlaufen" : "Nächste Vokabel";
-  $("#qNext").hidden = false;
-  current.ok = ok;
-});
+  setTimeout(() => $("#qNext").focus({preventScroll:true}), 50);
+}
+$("#qForm").addEventListener("submit", e => { e.preventDefault(); if (current && current.done) $("#qNext").click(); else checkAnswer(); });
+$("#qCheck").onclick = checkAnswer;
+$("#qHint").onclick = hint;
+$("#qInput").addEventListener("input", () => { if ($("#qInput").classList.contains("bad")) $("#qInput").className = "q-input"; });
 $("#qSpeak").onclick = () => current && speak(current.w.en);
 $("#qNext").onclick = () => {
-  if (!current.ok) return ask(false);
+  // Nach einem Unfall geht es erst weiter, wenn eine Vokabel richtig ist; bei der 500er-Marke immer
+  if (!current.ok && current.reason !== "checkpoint") return ask("again");
+  $("#qInput").blur();
   $("#questionScreen").hidden = true;
   // Hindernisse direkt vor der Figur wegräumen
   G.objs = G.objs.filter(o => o.z > PZ + 12 || o.type === "coin");
@@ -628,6 +839,7 @@ function best(){ try { return +localStorage.getItem(BEST_KEY) || 0; } catch(e) {
 function showBest(){ const b = best(); $("#bestInfo").textContent = b ? `Dein Rekord: ${b}` : ""; }
 function start(){
   newGame();
+  useItems(); renderUse();
   for (let z = 0; z < FAR; z += 4) spawnDeco(z);
   $("#startScreen").hidden = true; $("#endScreen").hidden = true; $("#hud").hidden = false;
   try { actx && actx.resume(); } catch(e) {}
@@ -641,19 +853,22 @@ $("#endBtn").onclick = () => {
   $("#pauseScreen").hidden = true; $("#hud").hidden = true;
   const score = Math.floor(G.dist), old = best(), rec = score > old;
   if (rec) try { localStorage.setItem(BEST_KEY, score); } catch(e) {}
-  $("#endScore").textContent = score; $("#endCoins").textContent = G.coins;
+  saveShop(); showWallet();
+  $("#endScore").textContent = score; $("#endCoins").textContent = `${G.coins} (davon ${G.bonus} für Vokabeln)`;
   $("#endRight").textContent = `${G.right} von ${G.right + G.wrong}`; $("#endBest").textContent = Math.max(score, old);
   $("#endNew").textContent = rec ? "🎉 Neuer Rekord!" : "";
   $("#endScreen").hidden = false; showBest();
 };
 document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveShop();
   if (document.hidden && G.running) { G.running = false; $("#pauseScreen").hidden = false; }
 });
 
 showBest();
 bindPick();
 let modelsReady = false;
-loadModels().then(() => { setupPlayer(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
+showWallet(); renderUse();
+loadModels().then(() => { setupPlayer(); applySkin(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
 loadVocab();
 requestAnimationFrame(loop);
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
