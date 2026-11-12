@@ -102,6 +102,11 @@ p{margin:0}
 .use-items button{border:2px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-weight:700;font-size:15px}
 .use-items button[aria-pressed="true"]{border-color:var(--green);background:#e2f5ea}
 .boost{display:flex;gap:4px}
+.hs-box{width:100%;background:#fff;border:2px solid var(--line);border-radius:14px;padding:8px 12px;text-align:left}
+.hs{margin:4px 0 0;padding-left:26px;font-variant-numeric:tabular-nums;font-size:15px}
+.hs li{padding:1px 0}
+.hs li.me{font-weight:700;color:var(--ink)}
+.hs small{color:var(--muted)}
 .q-msg{font-family:var(--font-display);font-size:24px;min-height:30px}
 .q-msg.ok{color:var(--green)} .q-msg.bad{color:var(--red)}
 .speak{border:2px solid var(--line);background:#fff;border-radius:999px;width:44px;height:44px;font-size:20px}
@@ -130,7 +135,7 @@ p{margin:0}
 <div class="overlay" id="startScreen">
   <div class="card">
     <h1>Vokabel-Rennen</h1>
-    <p>Lauf so weit du kannst! Alle 500 Punkte und bei jedem Unfall schreibst du eine Vokabel. Richtige Vokabeln bringen Münzen für den Shop.</p>
+    <p>Lauf so weit du kannst! Alle 500 Punkte schreibst du eine Vokabel. Richtige Vokabeln bringen Münzen für den Shop. Aber Vorsicht: Wenn du gegen etwas rennst, ist das Spiel vorbei!</p>
     <p class="wallet">🪙 <span class="walletNum">0</span></p>
     <button class="big-btn green" id="shopBtn" style="font-size:20px;padding:8px 24px">🛍️ Shop</button>
     <div class="help">
@@ -150,7 +155,7 @@ p{margin:0}
       <p class="muted">Für diese Runde benutzen:</p>
       <div class="use-items" id="useItems"></div>
     </div>
-    <p class="muted" id="bestInfo"></p>
+    <div class="hs-box" id="hsStartBox" hidden><b>🏆 Bestenliste</b><ol class="hs" id="hsStart"></ol></div>
     <button class="big-btn" id="startBtn" disabled>Los geht's!</button>
     <a class="link" href="index.html">← Zum Vokabelheft</a>
   </div>
@@ -201,14 +206,15 @@ p{margin:0}
 
 <div class="overlay" id="endScreen" hidden>
   <div class="card">
-    <h2>Geschafft!</h2>
+    <h2 id="endTitle">Geschafft!</h2>
     <div class="stats">
       <div>Strecke<b id="endScore">0</b></div>
       <div>Münzen<b id="endCoins" style="font-size:18px">0</b></div>
       <div>Vokabeln richtig<b id="endRight">0</b></div>
       <div>Rekord<b id="endBest">0</b></div>
     </div>
-    <p class="muted" id="endNew"></p>
+    <p class="q-msg ok" id="endNew"></p>
+    <div class="hs-box"><b>🏆 Bestenliste</b><ol class="hs" id="hsEnd"></ol></div>
     <p class="wallet">Im Geldbeutel: 🪙 <span class="walletNum">0</span></p>
     <div class="row-btns">
       <button class="big-btn" id="againBtn">Nochmal</button>
@@ -720,10 +726,11 @@ function pickWord(){
   G.asked.add(w.id);
   return w;
 }
+// Unfall = Spiel vorbei. Items der Runde sind damit weg, die nächste Runde beginnt bei 0.
 function crash(){
-  G.running = false; sfx.crash(); saveShop();
-  if (navigator.vibrate) try { navigator.vibrate(120); } catch(e) {}
-  setTimeout(() => ask("crash"), 350);
+  G.running = false; G.over = true; sfx.crash(); saveShop();
+  if (navigator.vibrate) try { navigator.vibrate(200); } catch(e) {}
+  setTimeout(() => endGame(true), 900);
 }
 function checkpoint(){
   G.running = false; sfx.tick(); saveShop();
@@ -846,8 +853,43 @@ function countdown(done){
 }
 
 /* ---------- Start, Pause, Ende ---------- */
-function best(){ try { return +localStorage.getItem(BEST_KEY) || 0; } catch(e) { return 0; } }
-function showBest(){ const b = best(); $("#bestInfo").textContent = b ? `Dein Rekord: ${b}` : ""; }
+/* Bestenliste: die 10 besten Läufe, gespeichert auf diesem Gerät */
+const HS_KEY = "vokabelheft-rennen-bestenliste";
+function loadHS(){
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(HS_KEY)) || []; } catch(e) {}
+  if (!list.length) { try { const b = +localStorage.getItem(BEST_KEY); if (b) list = [{s:b, d:"", v:0}]; } catch(e) {} }
+  return list;
+}
+function addHS(entry){
+  const list = loadHS(); list.push(entry);
+  list.sort((a, b) => b.s - a.s);
+  const top = list.slice(0, 10);
+  try { localStorage.setItem(HS_KEY, JSON.stringify(top)); localStorage.setItem(BEST_KEY, top[0].s); } catch(e) {}
+  return {top, rank: top.indexOf(entry) + 1};
+}
+function best(){ const l = loadHS(); return l.length ? l[0].s : 0; }
+function renderHS(el, list, mine, n){
+  el.innerHTML = list.slice(0, n).map(e => `<li class="${e === mine ? "me" : ""}">${e.s} Punkte${e.d ? ` <small>· ${esc(e.d)}${e.v ? ` · ${e.v} Vokabeln` : ""}</small>` : ""}</li>`).join("");
+}
+function showBest(){
+  const list = loadHS();
+  $("#hsStartBox").hidden = !list.length;
+  renderHS($("#hsStart"), list, null, 5);
+}
+function endGame(crashed){
+  $("#pauseScreen").hidden = true; $("#questionScreen").hidden = true; $("#hud").hidden = true;
+  const score = Math.floor(G.dist);
+  const entry = {s:score, d:new Date().toLocaleDateString("de-AT", {day:"numeric", month:"numeric"}), v:G.right};
+  const {top, rank} = score > 0 ? addHS(entry) : {top:loadHS(), rank:0};
+  saveShop(); showWallet(); renderUse();
+  $("#endTitle").textContent = crashed ? "💥 Game Over!" : "Geschafft!";
+  $("#endScore").textContent = score; $("#endCoins").textContent = `${G.coins} (davon ${G.bonus} für Vokabeln)`;
+  $("#endRight").textContent = `${G.right} von ${G.right + G.wrong}`; $("#endBest").textContent = top.length ? top[0].s : score;
+  $("#endNew").textContent = rank === 1 ? "🎉 Neuer Rekord!" : rank ? `Platz ${rank} in deiner Bestenliste!` : "";
+  renderHS($("#hsEnd"), top, entry, 10);
+  $("#endScreen").hidden = false; showBest();
+}
 function start(){
   newGame();
   useItems(); renderUse();
@@ -860,16 +902,7 @@ $("#startBtn").onclick = start;
 $("#againBtn").onclick = start;
 $("#pauseBtn").onclick = () => { if (!G.running) return; G.running = false; $("#pauseScreen").hidden = false; };
 $("#resumeBtn").onclick = () => { $("#pauseScreen").hidden = true; countdown(() => { G.running = true; }); };
-$("#endBtn").onclick = () => {
-  $("#pauseScreen").hidden = true; $("#hud").hidden = true;
-  const score = Math.floor(G.dist), old = best(), rec = score > old;
-  if (rec) try { localStorage.setItem(BEST_KEY, score); } catch(e) {}
-  saveShop(); showWallet();
-  $("#endScore").textContent = score; $("#endCoins").textContent = `${G.coins} (davon ${G.bonus} für Vokabeln)`;
-  $("#endRight").textContent = `${G.right} von ${G.right + G.wrong}`; $("#endBest").textContent = Math.max(score, old);
-  $("#endNew").textContent = rec ? "🎉 Neuer Rekord!" : "";
-  $("#endScreen").hidden = false; showBest();
-};
+$("#endBtn").onclick = () => endGame(false);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) saveShop();
   if (document.hidden && G.running) { G.running = false; $("#pauseScreen").hidden = false; }
