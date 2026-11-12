@@ -112,7 +112,7 @@ p{margin:0}
 .hud-break{flex-basis:100%;height:0}
 .hud .pill{white-space:nowrap}
 @media (max-width:420px){ .hud .pill{font-size:15px;padding:4px 10px} .hud button{width:36px;height:36px;font-size:16px} }
-.toast{position:fixed;top:calc(max(10px,env(safe-area-inset-top)) + 52px);left:50%;transform:translateX(-50%);background:rgba(255,255,255,.95);
+.toast{position:fixed;top:calc(max(10px,env(safe-area-inset-top)) + 100px);left:50%;transform:translateX(-50%);background:rgba(255,255,255,.95);
   border-radius:16px;padding:8px 16px;font-weight:700;font-size:17px;box-shadow:0 3px 0 rgba(0,0,0,.15);z-index:8;max-width:92vw;text-align:center;pointer-events:none}
 .toast.pop{animation:pop .35s}
 @keyframes pop{0%{transform:translateX(-50%) scale(.8)}60%{transform:translateX(-50%) scale(1.06)}100%{transform:translateX(-50%) scale(1)}}
@@ -586,7 +586,7 @@ function spawnRow(z){
       for (let j = 0; j < 3; j++) G.objs.push({type:"coin", lane:o.lane, z:o.z + .3 + j * .7, depth:.4, h:ROOF});
     }
   }
-  if (G.jet > 0) spawnAirCoins(z);
+  if (G.jet > (FAR - PZ) / G.speed + .3) spawnAirCoins(z);   // nur, wenn sie noch vor dem Landen ankommen
   const free = lanes[lanes.length - 1];
   if (n < lanes.length && G.hunt && !G.hunt.done && G.dist >= G.nextLetter) {
     G.objs.push({type:"letter", ch: G.hunt.letters[G.hunt.got], lane:free, z:z + 2, depth:.5});
@@ -631,7 +631,8 @@ cv.addEventListener("pointerup", () => { if (touch && !touch.done) jump(); touch
 let last = 0;
 function loop(ts){
   const dt = Math.min(.05, (ts - (last || ts)) / 1000); last = ts;
-  if (G.running) update(dt);
+  // In kleinen Schritten rechnen, damit langsame Geräte (wenige Bilder pro Sekunde) nicht durch Rampen oder Hindernisse "springen"
+  for (let rest = dt; rest > 1e-6 && G.running; rest -= 1 / 60) update(Math.min(rest, 1 / 60));
   if (G.running && !musicTimer) musicOn(); else if (!G.running && musicTimer) musicOff();
   draw(dt);
   requestAnimationFrame(loop);
@@ -667,7 +668,7 @@ function update(dt){
   for (const o of G.objs){
     if (o.gone) continue;
     const inZ = (pad = .1) => PZ >= o.z - .35 && PZ <= o.z + o.depth + pad;
-    const atH = () => Math.abs(G.y - (o.h || 0)) < 1.1;
+    const atH = () => Math.abs(G.y - (o.h || 0)) < 1.3;
     if (o.type === "coin"){
       // Mit Magnet: Münzen aus allen Spuren und Höhen in der Nähe
       const near = on("magnet") ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && inZ() && atH());
@@ -681,7 +682,7 @@ function update(dt){
     if (o.type === "ramp" || G.jet > 0 || G.inv > 0) continue;
     if (o.lane !== lane || !inZ()) continue;
     if (o.type === "train") {
-      if (!o.vz && G.y >= ROOF - .25) continue;   // oben auf dem Dach
+      if (!o.vz && G.y >= ROOF * .5) continue;    // oben auf dem Dach (oder gleich dort)
       if (G.y >= ROOF + .6) continue;             // drüber gesprungen
       hitHard(o); if (!G.running) return; continue;
     }
@@ -969,7 +970,8 @@ $("#qNext").onclick = () => {
   $("#qInput").blur();
   $("#questionScreen").hidden = true;
   // Hindernisse direkt vor der Figur wegräumen
-  G.objs = G.objs.filter(o => o.z > PZ + 12 + (o.vz || 0) * 2.5 || o.type === "coin");
+  G.objs.forEach(o => { if (o.type === "train" && o.z <= PZ + 12 + (o.vz || 0) * 2.5) removeTruck(o); });
+  G.objs = G.objs.filter(o => !o.gone && (o.z > PZ + 12 + (o.vz || 0) * 2.5 || (o.type === "coin" && !o.h) || o.type === "letter"));
   G.y = 0; G.vy = 0; G.slide = 0;
   countdown(() => { G.running = true; });
 };
@@ -1132,7 +1134,7 @@ function groundAt(lane){
   for (const o of G.objs) {
     if (o.gone || o.lane !== lane) continue;
     if (o.type === "ramp" && PZ >= o.z && PZ <= o.z + o.depth) h = Math.max(h, ROOF * (PZ - o.z) / o.depth);
-    else if (o.type === "train" && !o.vz && PZ >= o.z - .05 && PZ <= o.z + o.depth + .05 && G.y >= ROOF - .25) h = Math.max(h, ROOF);
+    else if (o.type === "train" && !o.vz && PZ >= o.z - .05 && PZ <= o.z + o.depth + .05 && G.y >= ROOF * .5) h = Math.max(h, ROOF);
   }
   return h;
 }
@@ -1151,9 +1153,14 @@ function makeRampMesh(o){
 /* ---------- Hoverboard, Stolpern, Verfolger ---------- */
 const board = new THREE.Mesh(new THREE.BoxGeometry(1.1, .12, 1.9), new THREE.MeshLambertMaterial({color: new THREE.Color("#ff8a3d").convertSRGBToLinear()}));
 board.position.y = .08; board.visible = false; player.add(board);
+// Lastwagen wegräumen samt Rampe davor und Münzen auf dem Dach
+function removeTruck(o){
+  o.gone = true;
+  for (const x of G.objs) if (x.lane === o.lane && ((x.type === "coin" && x.h === ROOF) || x.type === "ramp") && x.z >= o.z - RAMP - .5 && x.z <= o.z + o.depth + .5) x.gone = true;
+}
 function useHover(o){
   G.hover = 0; G.inv = 1.5;
-  if (o) o.gone = true;
+  if (o) { if (o.type === "train") removeTruck(o); else o.gone = true; }
   sfx.ok(); toast("🛹 Das Hoverboard hat dich gerettet!");
 }
 // Absperrung oder Schranke: einmal stolpern ist erlaubt, dann ist der Wachmann hinter dir
@@ -1195,7 +1202,11 @@ function startJet(){ G.jet = JET_TIME; G.slide = 0; toast("🚀 Jetpack! Sammle 
 function endJet(){
   G.jet = 0; G.inv = 1.2;
   // Landeplatz frei machen
-  G.objs.forEach(o => { if (o.type !== "coin" && o.type !== "letter" && o.z < PZ + 20) o.gone = true; });
+  G.objs.forEach(o => {
+    if (o.type === "train" && o.z < PZ + 20) removeTruck(o);
+    else if (o.type !== "coin" && o.type !== "letter" && o.z < PZ + 20) o.gone = true;
+    if (o.type === "coin" && o.h === JET_Y) o.gone = true;   // Luft-Münzen sind ohne Jetpack nicht erreichbar
+  });
 }
 function spawnAirCoins(z){
   const lane = [-1, 0, 1][Math.floor(Math.random() * 3)];
@@ -1259,13 +1270,15 @@ $("#reviveNo").onclick = () => { $("#reviveScreen").hidden = true; endGame(true)
 function dayStr(offset = 0){ const d = new Date(); d.setDate(d.getDate() + offset); return d.toLocaleDateString("sv-SE"); }
 function dailyReward(){
   const today = dayStr(0);
-  if (shop.lastDay === today) return;
+  if (shop.lastDay && shop.lastDay >= today) return showDaily();   // schon abgeholt (oder Datum verstellt)
   const streak = shop.lastDay === dayStr(-1) ? (shop.streak || 0) + 1 : 1;
   const reward = Math.min(7, streak) * 10;
-  shop.coins += reward; shop.lastDay = today; shop.streak = streak; saveShop();
-  $("#daily").innerHTML = `🎁 Tagesbelohnung: <b>+${reward} 🪙</b>` + (streak > 1 ? ` · ${streak} Tage hintereinander! 🔥` : " · Komm morgen wieder für mehr!");
-  $("#daily").hidden = false;
+  shop.coins += reward; shop.lastDay = today; shop.streak = streak;
+  shop.dailyMsg = `🎁 Tagesbelohnung: <b>+${reward} 🪙</b>` + (streak > 1 ? ` · ${streak} Tage hintereinander! 🔥` : " · Komm morgen wieder für mehr!");
+  saveShop(); showDaily();
 }
+// Die Meldung bleibt stehen, bis das erste Spiel des Tages startet (auch wenn die Seite neu lädt)
+function showDaily(){ if (shop.dailyMsg) { $("#daily").innerHTML = shop.dailyMsg; $("#daily").hidden = false; } }
 
 /* ---------- Mystery-Box ---------- */
 const MYSTERY_PRICE = 100;
@@ -1328,6 +1341,7 @@ function endGame(crashed){
 }
 function start(){
   newGame();
+  if (shop.dailyMsg) { shop.dailyMsg = ""; $("#daily").hidden = true; saveShop(); }
   G.mult = mult(); $("#mult").textContent = "×" + G.mult; boostTxt = null;
   G.hunt = pickHunt(); showHunt();
   useItems(); renderUse();
