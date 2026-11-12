@@ -30,7 +30,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 button{font:inherit;color:inherit;cursor:pointer}
 
 /* Anzeige oben */
-.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;
+.hud{position:fixed;top:0;left:0;right:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;
   padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));pointer-events:none}
 .pill{background:rgba(255,255,255,.92);border-radius:999px;padding:5px 12px;font-weight:700;font-size:17px;
   font-variant-numeric:tabular-nums;box-shadow:0 2px 0 rgba(0,0,0,.15)}
@@ -107,6 +107,11 @@ p{margin:0}
 .hs li{padding:1px 0}
 .hs li.me{font-weight:700;color:var(--ink)}
 .hs small{color:var(--muted)}
+.daily{background:#fff7d6;border:2px solid var(--marker);border-radius:14px;padding:8px 12px;font-size:15px;width:100%}
+#hunt{letter-spacing:2px}
+.hud-break{flex-basis:100%;height:0}
+.hud .pill{white-space:nowrap}
+@media (max-width:420px){ .hud .pill{font-size:15px;padding:4px 10px} .hud button{width:36px;height:36px;font-size:16px} }
 .toast{position:fixed;top:calc(max(10px,env(safe-area-inset-top)) + 52px);left:50%;transform:translateX(-50%);background:rgba(255,255,255,.95);
   border-radius:16px;padding:8px 16px;font-weight:700;font-size:17px;box-shadow:0 3px 0 rgba(0,0,0,.15);z-index:8;max-width:92vw;text-align:center;pointer-events:none}
 .toast.pop{animation:pop .35s}
@@ -136,10 +141,12 @@ p{margin:0}
   <span class="pill">🏃 <span id="score">0</span></span>
   <span class="pill">🪙 <span id="coins">0</span></span>
   <span class="pill" id="mult">×1</span>
-  <span class="pill boost" id="boosts" hidden></span>
   <span class="grow"></span>
   <button class="musicBtn" aria-label="Musik an/aus">🎵</button>
   <button id="pauseBtn" aria-label="Pause">⏸</button>
+  <span class="hud-break"></span>
+  <span class="pill" id="hunt" hidden></span>
+  <span class="pill boost" id="boosts" hidden></span>
 </div>
 
 <div class="toast" id="toast" hidden></div>
@@ -148,6 +155,7 @@ p{margin:0}
   <div class="card">
     <h1>Vokabel-Rennen</h1>
     <p>Lauf so weit du kannst! Alle 500 Punkte schreibst du eine Vokabel. Richtige Vokabeln bringen Münzen für den Shop. Aber Vorsicht: Wenn du gegen etwas rennst, ist das Spiel vorbei!</p>
+    <p class="daily" id="daily" hidden></p>
     <p class="wallet">🪙 <span class="walletNum">0</span></p>
     <button class="big-btn green" id="shopBtn" style="font-size:20px;padding:8px 24px">🛍️ Shop</button>
     <div class="hs-box"><b>🎯 Missionen</b><ul class="missions" id="missions"></ul><small class="muted" id="multInfo"></small></div>
@@ -155,6 +163,8 @@ p{margin:0}
       <b>⬅️➡️</b><span>Wischen: Spur wechseln</span>
       <b>⬆️</b><span>Wischen: springen (über Absperrungen)</span>
       <b>⬇️</b><span>Wischen: rutschen (unter Schranken durch)</span>
+      <b>🚚</b><span>Über Rampen auf die Lastwagen laufen</span>
+      <b>🔤</b><span>Sammle die Buchstaben des Wortes oben!</span>
     </div>
     <p class="muted">Am Computer: Pfeiltasten</p>
     <h2 class="pick-title">Welches Kapitel willst du üben?</h2>
@@ -204,6 +214,15 @@ p{margin:0}
   </div>
 </div>
 
+<div class="overlay" id="reviveScreen" hidden>
+  <div class="card">
+    <h2>💥 Unfall!</h2>
+    <p>Willst du weiterlaufen? Schreib <b>3 Vokabeln</b> richtig, dann geht es weiter. Das geht einmal pro Runde.</p>
+    <button class="big-btn green" id="reviveYes">Ja, Vokabeln! ✍️</button>
+    <button class="link" id="reviveNo" style="background:none;border:none">Nein, Spiel beenden</button>
+  </div>
+</div>
+
 <div class="overlay" id="shopScreen" hidden>
   <div class="card">
     <h2>🛍️ Shop</h2>
@@ -222,7 +241,7 @@ p{margin:0}
   <div class="card">
     <h2 id="endTitle">Geschafft!</h2>
     <div class="stats">
-      <div>Strecke<b id="endScore">0</b></div>
+      <div>Punkte<b id="endScore">0</b></div>
       <div>Münzen<b id="endCoins" style="font-size:18px">0</b></div>
       <div>Vokabeln richtig<b id="endRight">0</b></div>
       <div>Rekord<b id="endBest">0</b></div>
@@ -446,7 +465,7 @@ let mixer = null, acts = {}, curAct = null;
 function setupPlayer(){
   const g = TPL.character;
   if (g) {
-    const m = g.scene; m.scale.setScalar(1.8); m.position.y = .36; m.rotation.y = Math.PI;
+    const m = g.scene; m.userData.char = true; m.scale.setScalar(1.8); m.position.y = .36; m.rotation.y = Math.PI;
     player.add(m);
     mixer = new THREE.AnimationMixer(m);
     for (const a of g.animations) acts[a.name] = mixer.clipAction(a);
@@ -462,36 +481,45 @@ function playAct(name, speed = 1){
   curAct = a;
 }
 
+// Geometrien und Materialien werden geteilt, damit beim langen Spielen kein Speicher vollläuft
+const GEO = {
+  board: new THREE.BoxGeometry(LANE * .85, .5, .15), lowPost: new THREE.BoxGeometry(.12, 1, .12),
+  highPost: new THREE.BoxGeometry(.15, 3.1, .15), bar: new THREE.BoxGeometry(LANE * .95, .6, .15),
+  light: new THREE.SphereGeometry(.22, 12, 8), coin: new THREE.CylinderGeometry(.35, .35, .1, 20).rotateX(Math.PI / 2)
+};
+const lightMat = new THREE.MeshBasicMaterial({color: 0xfff3a0});
+const coinMat = mat(0xf5b800);
+const stripeFaces = stripeMats.map(sm => [postMat, postMat, postMat, postMat, sm, sm]);
+const truckBoxMats = COLORS.map(c => mat(c));
 function makeObjMesh(o){
   if (o.type === "pu") return makePuMesh(o);
+  if (o.type === "letter") return makeLetterMesh(o);
+  if (o.type === "ramp") return makeRampMesh(o);
   const g = new THREE.Group();
   if (o.type === "coin") {
     const m = clone("coin");
     if (m) { m.scale.setScalar(2.4); g.add(m); }
-    else g.add(new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .1, 20).rotateX(Math.PI / 2), mat(0xf5b800)));
-    g.position.y = .9;
+    else g.add(new THREE.Mesh(GEO.coin, coinMat));
+    g.position.y = .9 + (o.h || 0) * 1.6;
   } else if (o.type === "low") {
     // Absperrung: drüberspringen
-    const board = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, .5, .15), [postMat, postMat, postMat, postMat, stripeMats[o.c], stripeMats[o.c]]);
+    const board = new THREE.Mesh(GEO.board, stripeFaces[o.c]);
     board.position.y = .75; g.add(board);
-    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.12, 1, .12), postMat); p.position.set(s * LANE * .38, .5, 0); g.add(p); }
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(GEO.lowPost, postMat); p.position.set(s * LANE * .38, .5, 0); g.add(p); }
   } else if (o.type === "high") {
     // Schranke: drunter durchrutschen
-    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.15, 3.1, .15), postMat); p.position.set(s * LANE * .45, 1.55, 0); g.add(p); }
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(LANE * .95, .6, .15), [postMat, postMat, postMat, postMat, stripeMats[o.c], stripeMats[o.c]]);
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(GEO.highPost, postMat); p.position.set(s * LANE * .45, 1.55, 0); g.add(p); }
+    const bar = new THREE.Mesh(GEO.bar, stripeFaces[o.c]);
     bar.position.y = 2.25; g.add(bar);
   } else {
-    // Lastwagen: Spur wechseln
+    // Lastwagen: Spur wechseln, drüberspringen oder über die Rampe aufs Dach
     const m = clone(["truckGreen", "truckPurple", "truckRed", "truckYellow"][o.c]);
     if (m) { m.scale.setScalar(1.45); m.position.set(0, .45, -o.depth * ZS / 2); g.add(m); }
+    else { const b = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, ROOF * 1.6, o.depth * ZS), truckBoxMats[o.c]); b.position.set(0, ROOF * .8, -o.depth * ZS / 2); g.add(b); }
     if (o.vz) {
       // Scheinwerfer: dieser Lastwagen fährt dir entgegen
-      for (const s of [-1, 1]) {
-        const l = new THREE.Mesh(new THREE.SphereGeometry(.22, 12, 8), new THREE.MeshBasicMaterial({color: 0xfff3a0}));
-        l.position.set(s * .7, 1, .15); g.add(l);
-      }
+      for (const s of [-1, 1]) { const l = new THREE.Mesh(GEO.light, lightMat); l.position.set(s * .7, 1, .15); g.add(l); }
     }
-    else { const b = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, 2.2, o.depth * ZS), mat(COLORS[o.c])); b.position.set(0, 1.1, -o.depth * ZS / 2); g.add(b); }
   }
   scene.add(g); return g;
 }
@@ -516,16 +544,24 @@ function addClouds(){
   }
 }
 
-const QUIZ_EVERY = 500; // alle 500 Punkte kommt eine Vokabel
+const QUIZ_EVERY = 500; // alle 500 m Strecke kommt eine Vokabel (beim Multiplikator ×1 = 500 Punkte)
 let G = null; // Spielzustand
 function newGame(){
   G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0, bonus:0,
        lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set(),
        nextQuiz:QUIZ_EVERY, magnet:false, double:false, superjump:false,
-       pu:{magnet:0, double:0, superjump:0}, stats:{pups:0}, score:0, mult:1, boostT:0};
+       pu:{magnet:0, double:0, superjump:0}, stats:{pups:0}, score:0, mult:1, boostT:0,
+       hover:0, inv:0, chase:0, jet:0, grounded:true, revived:false, reviveLeft:0, hunt:null, nextLetter:150};
 }
 newGame();
 
+// Wenn ein Lastwagen von z entgegenkommt: Wo sind die anderen Hindernisse, wenn er bei der Figur ankommt?
+// Mindestens eine andere Spur muss dort ohne stehenden Lastwagen sein.
+function escapeAt(o, z){
+  const vz = 7 + Math.min(6, G.dist / 400), t = (z - PZ) / (G.speed + vz), meet = PZ + G.speed * t;
+  const blocked = l => G.objs.some(x => x.lane === l && x.type === "train" && !x.gone && meet >= x.z - 4 && meet <= x.z + x.depth + 4);
+  return [-1, 0, 1].some(l => l !== o.lane && !blocked(l));
+}
 function spawnRow(z){
   // Mindestens eine Spur bleibt frei oder überwindbar. Spuren mit entgegenkommendem Lastwagen bleiben leer.
   const busy = new Set(G.objs.filter(o => o.vz && o.z > PZ - 3).map(o => o.lane));
@@ -533,18 +569,29 @@ function spawnRow(z){
   if (!lanes.length) return;
   const kinds = ["low","high","train"];
   const n = Math.min(lanes.length - 1, Math.random() < .35 ? 2 : 1);
+  let rowHasVz = false;
   for (let i = 0; i < n; i++){
     const k = kinds[Math.floor(Math.random() * (G.dist < 150 ? 2 : 3))];
     const o = {type:k, lane:lanes[i], z, depth: k === "train" ? 2.1 : .3, c: Math.floor(Math.random()*4)};
     // Ab 400 Punkten fahren manche Lastwagen entgegen, aber nur auf einer leeren Spur
-    if (k === "train" && G.dist > 400 && Math.random() < .4 && !G.objs.some(x => x.lane === o.lane && x.z > PZ && x.type !== "coin")) {
+    if (k === "train" && G.dist > 400 && !rowHasVz && Math.random() < .4 && !G.objs.some(x => x.lane === o.lane && x.z > PZ && x.type !== "coin") && escapeAt(o, z)) {
+      rowHasVz = true;
       o.vz = 7 + Math.min(6, G.dist / 400);
       G.objs.forEach(x => { if (x.type === "coin" && x.lane === o.lane) x.gone = true; });
     }
     G.objs.push(o);
+    // Vor manchen stehenden Lastwagen liegt eine Rampe, oben gibt es Münzen
+    if (k === "train" && !o.vz && Math.random() < .5) {
+      G.objs.push({type:"ramp", lane:o.lane, z:o.z - RAMP, depth:RAMP});
+      for (let j = 0; j < 3; j++) G.objs.push({type:"coin", lane:o.lane, z:o.z + .3 + j * .7, depth:.4, h:ROOF});
+    }
   }
+  if (G.jet > 0) spawnAirCoins(z);
   const free = lanes[lanes.length - 1];
-  if (n < lanes.length && G.dist > 100 && Math.random() < .12) {
+  if (n < lanes.length && G.hunt && !G.hunt.done && G.dist >= G.nextLetter) {
+    G.objs.push({type:"letter", ch: G.hunt.letters[G.hunt.got], lane:free, z:z + 2, depth:.5});
+    G.nextLetter = G.dist + 110;
+  } else if (n < lanes.length && G.dist > 100 && Math.random() < .12) {
     G.objs.push({type:"pu", pu: shuffle(Object.keys(PU))[0], lane:free, z:z + 2, depth:.5});
   } else if (n < lanes.length && Math.random() < .7) {
     for (let i = 0; i < 5; i++) G.objs.push({type:"coin", lane:free, z:z + i*1.6, depth:.4});
@@ -557,8 +604,8 @@ function spawnDeco(z){
 
 /* ---------- Steuerung ---------- */
 function move(dir){ if (!G.running) return; G.lane = Math.max(-1, Math.min(1, G.lane + dir)); }
-function jump(){ if (!G.running || G.y > .01) return; G.vy = on("superjump") ? 10.5 : 8.6; G.slide = 0; sfx.jump(); missionAdd("jumps", 1); }
-function slide(){ if (!G.running) return; if (G.slide <= 0) missionAdd("slides", 1); G.slide = .75; if (G.y > .01) G.vy = -12; }
+function jump(){ if (!G.running || !G.grounded) return; G.vy = on("superjump") ? 10.5 : 8.6; G.slide = 0; sfx.jump(); missionAdd("jumps", 1); }
+function slide(){ if (!G.running || G.jet > 0) return; if (G.slide <= 0) missionAdd("slides", 1); G.slide = .75; if (G.y > .01) G.vy = -12; }
 addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT") return;
   const k = e.key;
@@ -595,10 +642,10 @@ function update(dt){
   const dz = G.speed * dt;
   G.dist += dz;
   G.x += (G.lane - G.x) * Math.min(1, dt * 14);
-  G.vy -= 26 * dt; G.y = Math.max(0, G.y + G.vy * dt); if (G.y === 0) G.vy = 0;
-  G.slide = Math.max(0, G.slide - dt);
   for (const o of G.objs) o.z -= dz + (o.vz || 0) * dt;
   for (const k in G.pu) G.pu[k] = Math.max(0, G.pu[k] - dt);
+  G.hover = Math.max(0, G.hover - dt); G.inv = Math.max(0, G.inv - dt); G.chase = Math.max(0, G.chase - dt);
+  if (G.jet > 0) { G.jet -= dt; if (G.jet <= 0) endJet(); }
   G.score += dz * G.mult;
   for (const d of G.deco) d.z -= dz;
   G.objs = G.objs.filter(o => !o.gone && o.z + o.depth > -1);
@@ -607,27 +654,43 @@ function update(dt){
   G.nextDeco -= dz; if (G.nextDeco <= 0) { spawnDeco(FAR); G.nextDeco = 3 + Math.random() * 2; }
 
   const lane = Math.round(G.x);
+  // Springen, Fallen, Rampen und Dächer; mit Jetpack in der Luft
+  if (G.jet > 0) { G.y += (JET_Y - G.y) * Math.min(1, dt * 4); G.vy = 0; G.grounded = false; }
+  else {
+    const gh = groundAt(lane);
+    G.vy -= 26 * dt; G.y += G.vy * dt;
+    if (G.y <= gh && G.vy <= 0) { G.y = gh; G.vy = 0; }   // beim Hochspringen nicht am Dach hängen bleiben
+    G.grounded = G.y <= gh + .02;
+  }
+  G.slide = Math.max(0, G.slide - dt);
+
   for (const o of G.objs){
     if (o.gone) continue;
+    const inZ = (pad = .1) => PZ >= o.z - .35 && PZ <= o.z + o.depth + pad;
+    const atH = () => Math.abs(G.y - (o.h || 0)) < 1.1;
     if (o.type === "coin"){
-      // Mit Magnet: Münzen aus allen Spuren in der Nähe
-      const near = on("magnet") ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && PZ >= o.z - .35 && PZ <= o.z + o.depth + .1);
+      // Mit Magnet: Münzen aus allen Spuren und Höhen in der Nähe
+      const near = on("magnet") ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && inZ() && atH());
       if (near) { o.gone = true; addCoins(on("double") ? 2 : 1); sfx.coin(); missionSet("coinsRun", G.coins); }
       continue;
     }
-    if (o.type === "pu"){
-      if (o.lane === lane && PZ >= o.z - .4 && PZ <= o.z + o.depth + .1) { o.gone = true; pickPowerup(o); }
+    if (o.type === "pu" || o.type === "letter"){
+      if (o.lane === lane && inZ() && atH()) { o.gone = true; o.type === "pu" ? pickPowerup(o) : pickLetter(); }
       continue;
     }
-    if (o.lane !== lane) continue;
-    if (PZ < o.z - .35 || PZ > o.z + o.depth + .1) continue;
-    const hit = o.type === "train" || (o.type === "low" && G.y < .75) || (o.type === "high" && G.slide <= 0);
-    if (hit) { crash(); return; }
+    if (o.type === "ramp" || G.jet > 0 || G.inv > 0) continue;
+    if (o.lane !== lane || !inZ()) continue;
+    if (o.type === "train") {
+      if (!o.vz && G.y >= ROOF - .25) continue;   // oben auf dem Dach
+      if (G.y >= ROOF + .6) continue;             // drüber gesprungen
+      hitHard(o); if (!G.running) return; continue;
+    }
+    if ((o.type === "low" && G.y < .75) || (o.type === "high" && G.slide <= 0 && G.y < 1.6)) { stumble(o); if (!G.running) return; }
   }
   $("#score").textContent = Math.floor(G.score);
   $("#coins").textContent = G.coins;
   G.boostT -= dt; if (G.boostT <= 0) { G.boostT = .25; showBoosts(); }
-  if (G.score >= G.nextQuiz) { G.nextQuiz += QUIZ_EVERY; missionSet("scoreRun", Math.floor(G.score)); checkpoint(); }
+  if (G.dist >= G.nextQuiz) { G.nextQuiz += QUIZ_EVERY; missionSet("scoreRun", Math.floor(G.score)); checkpoint(); }
 }
 
 /* ---------- Zeichnen ---------- */
@@ -644,7 +707,7 @@ function draw(dt){
   for (const m of shown) if (!alive.has(m)) scene.remove(m);
   shown = [...alive];
   for (const o of G.objs) if (o.type === "coin" && !o.gone) o.mesh.rotation.y = G.t * 3 + o.z;
-  for (const o of G.objs) if (o.type === "pu" && !o.gone) o.mesh.position.y = 1.3 + Math.sin(G.t * 4) * .2;
+  for (const o of G.objs) if ((o.type === "pu" || o.type === "letter") && !o.gone) o.mesh.position.y = 1.3 + Math.sin(G.t * 4) * .2;
   const off = G.dist % 2;
   sleepers.forEach((s, i) => { s.position.z = wz(i * 2 - off - 1); });
 
@@ -657,15 +720,28 @@ function draw(dt){
   else { player.scale.set(1, 1, 1); player.rotation.x = 0; }
   if (mixer) {
     if (!G.running) playAct("idle");
-    else if (G.y > .05) playAct("jump");
+    else if (!G.grounded && G.jet <= 0) playAct("jump");
     else playAct("walk", 1.6 + G.speed / 18);
     mixer.update(dt);
   }
 
+  board.visible = G.hover > 0;
+  jetpack.visible = G.jet > 0;
+  if (jetpack.visible) jetpack.children.forEach((c, i) => { if (i % 2) c.scale.y = .8 + Math.random() * .5; });
+  player.visible = !(G.inv > 0 && G.running && Math.floor(G.t * 12) % 2);   // blinkt kurz nach einer Rettung
+  if (chaser) {
+    const target = G.chase > 0 && G.running ? 2.1 : 16;
+    chaser.position.z += (target - chaser.position.z) * Math.min(1, dt * 3);
+    chaser.position.x += (px - chaser.position.x) * Math.min(1, dt * 5);
+    chaser.visible = chaser.position.z < 15;
+    if (chaserMixer && G.running) chaserMixer.update(dt * 2.2);
+  }
+
   // Kamera folgt der Figur
   camera.position.x += (px * .6 - camera.position.x) * Math.min(1, dt * 6);
-  camera.position.y = 6.2; camera.position.z = 10;
-  camera.lookAt(camera.position.x, 1, -12);
+  camera.position.y += (6.2 + Math.max(0, G.y - .5) * 1.3 - camera.position.y) * Math.min(1, dt * 4);
+  camera.position.z = 10;
+  camera.lookAt(camera.position.x, 1 + G.y * .8, -12);
   for (const c of clouds) { c.position.z += dt * 1.5; if (c.position.z > 10) c.position.z = -160; }
   renderer.render(scene, camera);
 }
@@ -686,17 +762,19 @@ const SKINS = [
 const ITEMS = [
   {id:"magnet", icon:"🧲", name:"Münz-Magnet", desc:"Sammelt eine Runde lang alle Münzen in der Nähe ein.", price:40},
   {id:"double", icon:"✖️2", name:"Doppel-Münzen", desc:"Jede Münze zählt eine Runde lang doppelt.", price:60},
-  {id:"superjump", icon:"🦘", name:"Super-Sprung", desc:"Eine Runde lang springst du höher.", price:30}
+  {id:"superjump", icon:"🦘", name:"Super-Sprung", desc:"Eine Runde lang springst du höher.", price:30},
+  {id:"hoverboard", icon:"🛹", name:"Hoverboard", desc:"Rettet dich 30 Sekunden lang einmal vor einem Unfall.", price:80}
 ];
 let shop = {coins:0, skins:["standard"], skin:"standard", items:{}, use:{}, music:true, mlevel:0, mprog:{}, mdone:{}};
 try { const s = JSON.parse(localStorage.getItem(SHOP_KEY)); if (s) shop = Object.assign(shop, s); } catch(e) {}
 function saveShop(){ try { localStorage.setItem(SHOP_KEY, JSON.stringify(shop)); } catch(e) {} }
 function showWallet(){ document.querySelectorAll(".walletNum").forEach(el => el.textContent = shop.coins); }
-function addCoins(n){ G.coins += n; shop.coins += n; }
+function addCoins(n){ G.coins += n; shop.coins += n; if (typeof missionSet === "function") missionSet("coinsRun", G.coins); }
 
 function applySkin(){
   const s = SKINS.find(x => x.id === shop.skin) || SKINS[0];
-  player.traverse(o => { if (o.isMesh && o.material && o.material.color) o.material.color.set(s.color).convertSRGBToLinear(); });
+  const target = player.children.find(c => c.userData.char) || player;
+  target.traverse(o => { if (o.isMesh && o.material && o.material.color) o.material.color.set(s.color).convertSRGBToLinear(); });
 }
 let shopTab = "skins";
 function renderShop(){
@@ -711,7 +789,8 @@ function renderShop(){
       return `<div class="shop-item${on ? " active" : ""}"><span class="sw" style="background:${s.color}"></span><b>${s.name}</b>${btn}</div>`;
     }).join("");
   } else {
-    $("#shopList").innerHTML = ITEMS.map(it => {
+    $("#shopList").innerHTML = `<div class="shop-item"><span class="ico">🎁</span><b>Mystery-Box</b><small>Überraschung: ein Skin, ein Item oder viele Münzen!</small>
+        <button data-mystery="1" ${shop.coins < MYSTERY_PRICE ? "disabled" : ""}>🪙 ${MYSTERY_PRICE}</button></div>` + ITEMS.map(it => {
       const n = shop.items[it.id] || 0;
       return `<div class="shop-item"><span class="ico">${it.icon}</span><b>${it.name}</b><small>${it.desc}</small>
         <small>Du hast: ${n}</small><button data-item="${it.id}" ${shop.coins < it.price ? "disabled" : ""}>🪙 ${it.price}</button></div>`;
@@ -725,6 +804,8 @@ $("#shopList").addEventListener("click", e => {
     if (shop.coins < s.price) return;
     shop.coins -= s.price; shop.skins.push(s.id); shop.skin = s.id;
     $("#shopMsg").textContent = `Neuer Skin: ${s.name}! 🎉`; sfx.ok();
+  } else if (b.dataset.mystery) {
+    const msg = openMystery(); if (msg) $("#shopMsg").textContent = msg;
   } else if (b.dataset.wear) {
     shop.skin = b.dataset.wear; sfx.tick();
   } else if (b.dataset.item) {
@@ -753,7 +834,7 @@ $("#useItems").addEventListener("click", e => {
 function useItems(){
   const on = [];
   for (const it of ITEMS) {
-    if (shop.use[it.id] && (shop.items[it.id] || 0) > 0) { shop.items[it.id]--; G[it.id] = true; on.push(it.icon); }
+    if (shop.use[it.id] && (shop.items[it.id] || 0) > 0) { shop.items[it.id]--; if (it.id === "hoverboard") G.hover = 30; else G[it.id] = true; on.push(it.icon); }
     if (!shop.items[it.id]) shop.use[it.id] = false;
   }
   saveShop();
@@ -774,7 +855,7 @@ function pickWord(){
 function crash(){
   G.running = false; G.over = true; sfx.crash(); saveShop();
   if (navigator.vibrate) try { navigator.vibrate(200); } catch(e) {}
-  setTimeout(() => endGame(true), 900);
+  setTimeout(() => (!G.revived && POOL.length >= 4) ? offerRevive() : endGame(true), 900);
 }
 function checkpoint(){
   G.running = false; sfx.tick(); saveShop();
@@ -797,8 +878,9 @@ function ask(reason){
   current = {w, reason, tries:0, hints:0, maxHints:maxHints(w.en), done:false, ok:false};
   const titles = {
     crash: ["Autsch! 💥 Schreib die Vokabel, dann geht's weiter.", " bad"],
-    checkpoint: [`🏁 ${G.nextQuiz - QUIZ_EVERY} Punkte! Vokabel-Zeit!`, ""],
-    again: ["Noch eine Vokabel!", ""]
+    checkpoint: [`🏁 ${Math.floor(G.score)} Punkte! Vokabel-Zeit!`, ""],
+    again: ["Noch eine Vokabel!", ""],
+    revive: [`Weiterspielen: Vokabel ${REVIVE_WORDS - G.reviveLeft + 1} von ${REVIVE_WORDS}`, ""]
   };
   $("#qTitle").textContent = titles[reason][0];
   $("#qTitle").className = "q-msg" + titles[reason][1];
@@ -859,12 +941,12 @@ function finishQ(ok){
     store.stars++; G.right++; addCoins(reward); G.bonus += reward; missionAdd("vocab", 1);
     inp.className = "q-input ok";
     $("#qMsg").textContent = `Richtig! ⭐ +${reward} 🪙`; $("#qMsg").className = "q-msg ok"; sfx.ok();
-    $("#qNext").textContent = "Weiterlaufen";
+    $("#qNext").textContent = c.reason === "revive" && G.reviveLeft > 1 ? "Nächste Vokabel" : "Weiterlaufen";
   } else {
     rec.f++; rec.lvl = 0; G.wrong++;
     $("#qMsg").textContent = "Schade! So schreibt man es:"; $("#qMsg").className = "q-msg bad"; sfx.bad();
     $("#qSol").innerHTML = `<span class="q-yours">${esc(c.typed || "")}</span> ${esc(w.en)}`; $("#qSol").hidden = false;
-    $("#qNext").textContent = c.reason === "checkpoint" ? "Weiterlaufen" : "Nächste Vokabel";
+    $("#qNext").textContent = c.reason === "checkpoint" ? "Weiterlaufen" : c.reason === "revive" ? "Game Over" : "Nächste Vokabel";
   }
   store.words[w.id] = rec; save(); saveShop();
   $("#qSpeak").hidden = false; $("#qNext").hidden = false;
@@ -877,12 +959,17 @@ $("#qHint").onclick = hint;
 $("#qInput").addEventListener("input", () => { if ($("#qInput").classList.contains("bad")) $("#qInput").className = "q-input"; });
 $("#qSpeak").onclick = () => current && speak(current.w.en);
 $("#qNext").onclick = () => {
+  unlockAudio();
   // Nach einem Unfall geht es erst weiter, wenn eine Vokabel richtig ist; bei der 500er-Marke immer
-  if (!current.ok && current.reason !== "checkpoint") return ask("again");
+  if (current.reason === "revive") {
+    if (!current.ok) { $("#qInput").blur(); $("#questionScreen").hidden = true; return endGame(true); }
+    if (--G.reviveLeft > 0) return ask("revive");
+    G.over = false; G.inv = 2; G.chase = 0;
+  } else if (!current.ok && current.reason !== "checkpoint") return ask("again");
   $("#qInput").blur();
   $("#questionScreen").hidden = true;
   // Hindernisse direkt vor der Figur wegräumen
-  G.objs = G.objs.filter(o => o.z > PZ + 12 || o.type === "coin");
+  G.objs = G.objs.filter(o => o.z > PZ + 12 + (o.vz || 0) * 2.5 || o.type === "coin");
   G.y = 0; G.vy = 0; G.slide = 0;
   countdown(() => { G.running = true; });
 };
@@ -901,10 +988,11 @@ const PU_TIME = 15; // Sekunden
 const PU = {
   magnet:    {icon:"🧲", color:"#d6333c", name:"Magnet"},
   double:    {icon:"2×", color:"#f5b800", name:"Doppel-Münzen"},
-  superjump: {icon:"🦘", color:"#22915a", name:"Super-Sprung"}
+  superjump: {icon:"🦘", color:"#22915a", name:"Super-Sprung"},
+  jetpack:   {icon:"🚀", color:"#7b4dd6", name:"Jetpack"}
 };
 const on = k => G[k] || G.pu[k] > 0;   // aus dem Shop (ganze Runde) oder eingesammelt (15 s)
-const puTex = {};
+const puTex = {}, puMat = {};
 function puTexture(k){
   if (puTex[k]) return puTex[k];
   const c = document.createElement("canvas"); c.width = c.height = 128;
@@ -918,23 +1006,27 @@ function puTexture(k){
   return puTex[k] = t;
 }
 function makePuMesh(o){
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({map: puTexture(o.pu)}));
+  const s = new THREE.Sprite(puMat[o.pu] || (puMat[o.pu] = new THREE.SpriteMaterial({map: puTexture(o.pu)})));
   s.scale.setScalar(1.5);
   const g = new THREE.Group(); g.add(s); g.position.y = 1.3;
   scene.add(g); return g;
 }
 function pickPowerup(o){
-  G.pu[o.pu] = PU_TIME; G.stats.pups++;
+  G.stats.pups++; missionAdd("pups", 1);
+  if (o.pu === "jetpack") { sfx.ok(); return startJet(); }
+  G.pu[o.pu] = PU_TIME;
   sfx.ok(); toast(`${PU[o.pu].icon} ${PU[o.pu].name}!`);
-  missionAdd("pups", 1);
 }
 let boostTxt = "";
 function showBoosts(){
   const parts = [];
   for (const k of Object.keys(PU)) {
-    if (G[k]) parts.push(PU[k].icon);
+    if (G[k] && k !== "jetpack") parts.push(PU[k].icon);
     else if (G.pu[k] > 0) parts.push(`${PU[k].icon} ${Math.ceil(G.pu[k])}`);
   }
+  if (G.jet > 0) parts.push(`🚀 ${Math.ceil(G.jet)}`);
+  if (G.hover > 0) parts.push(`🛹 ${Math.ceil(G.hover)}`);
+  if (G.chase > 0) parts.push("👮");
   const t = parts.join("  ");
   if (t !== boostTxt) { boostTxt = t; $("#boosts").textContent = t; $("#boosts").hidden = !t; }
 }
@@ -972,15 +1064,20 @@ function playStep(s, t){
   const m = MELODY[s % MELODY.length]; if (m) tone(m, t, STEP * 1.6, "triangle", .14);
 }
 function musicOn(){
-  if (!shop.music || musicTimer) return;
+  if (!shop.music || !store.sound || musicTimer) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume();
     if (!musicGain) { musicGain = actx.createGain(); musicGain.gain.value = .22; musicGain.connect(actx.destination); }
     nextNote = actx.currentTime + .05;
-    musicTimer = setInterval(() => { while (nextNote < actx.currentTime + .25) { playStep(step++, nextNote); nextNote += STEP; } }, 60);
+    musicTimer = setInterval(() => {
+      if (nextNote < actx.currentTime) nextNote = actx.currentTime + .05;   // nach Pausen nichts nachholen
+      while (nextNote < actx.currentTime + .25) { playStep(step++, nextNote); nextNote += STEP; }
+    }, 60);
   } catch(e) {}
 }
 function musicOff(){ clearInterval(musicTimer); musicTimer = null; }
+// iOS spielt Ton nur, wenn das Audio bei einem Antippen gestartet wurde
+function unlockAudio(){ try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch(e) {} }
 function showMusicBtn(){ document.querySelectorAll(".musicBtn").forEach(b => b.textContent = shop.music ? "🎵" : "🔇"); }
 function toggleMusic(){ shop.music = !shop.music; saveShop(); showMusicBtn(); if (shop.music && G.running) musicOn(); else musicOff(); }
 
@@ -1012,8 +1109,7 @@ function missionUpdate(k, v, isRun){
       const reward = 50 + 25 * (shop.mlevel || 0);
       shop.mlevel = (shop.mlevel || 0) + 1; shop.mprog = {}; shop.mdone = {};
       shop.coins += reward;
-      setTimeout(() => toast(`🎉 Alle Missionen! Multiplikator ×${mult()} und +${reward} 🪙`), 2300);
-      $("#mult").textContent = "×" + mult();
+      setTimeout(() => toast(`🎉 Alle Missionen! +${reward} 🪙 · Ab der nächsten Runde ×${mult()}`), 2300);
     }
     saveShop();
   }
@@ -1025,6 +1121,170 @@ function renderMissions(){
     return `<li class="${done ? "done" : ""}"><span>${done ? "✅" : "⬜"} ${esc(m.txt(m.n))}</span><small>${done ? "geschafft" : `${p} / ${m.n}`}</small></li>`;
   }).join("");
   $("#multInfo").textContent = `Punkte-Multiplikator: ×${mult()}`;
+}
+
+/* ---------- Auf Lastwagen laufen (Rampen) ---------- */
+const ROOF = 1.15;   // Dachhöhe der Lastwagen in Spiel-Einheiten (1 = 1,6 m)
+const RAMP = 1.6;    // Länge der Rampe
+// Bodenhöhe unter der Figur: Rampe steigt an, auf dem Dach eines stehenden Lastwagens bleibt man oben
+function groundAt(lane){
+  let h = 0;
+  for (const o of G.objs) {
+    if (o.gone || o.lane !== lane) continue;
+    if (o.type === "ramp" && PZ >= o.z && PZ <= o.z + o.depth) h = Math.max(h, ROOF * (PZ - o.z) / o.depth);
+    else if (o.type === "train" && !o.vz && PZ >= o.z - .05 && PZ <= o.z + o.depth + .05 && G.y >= ROOF - .25) h = Math.max(h, ROOF);
+  }
+  return h;
+}
+const rampMat = new THREE.MeshLambertMaterial({color: new THREE.Color("#8d99ae").convertSRGBToLinear()});
+const rampGeo = new THREE.BoxGeometry(LANE * .8, .15, Math.hypot(RAMP * ZS, ROOF * 1.6));
+function makeRampMesh(o){
+  const len = o.depth * ZS, hgt = ROOF * 1.6;
+  const g = new THREE.Group();
+  const plate = new THREE.Mesh(rampGeo, rampMat);
+  plate.rotation.x = Math.atan2(hgt, len);
+  plate.position.set(0, hgt / 2, -len / 2);
+  g.add(plate);
+  scene.add(g); return g;
+}
+
+/* ---------- Hoverboard, Stolpern, Verfolger ---------- */
+const board = new THREE.Mesh(new THREE.BoxGeometry(1.1, .12, 1.9), new THREE.MeshLambertMaterial({color: new THREE.Color("#ff8a3d").convertSRGBToLinear()}));
+board.position.y = .08; board.visible = false; player.add(board);
+function useHover(o){
+  G.hover = 0; G.inv = 1.5;
+  if (o) o.gone = true;
+  sfx.ok(); toast("🛹 Das Hoverboard hat dich gerettet!");
+}
+// Absperrung oder Schranke: einmal stolpern ist erlaubt, dann ist der Wachmann hinter dir
+function stumble(o){
+  if (G.hover > 0) return useHover(o);
+  if (G.chase > 0) return crash();
+  o.gone = true; G.chase = 8; G.inv = .8;
+  sfx.bad(); toast("😬 Gestolpert! Der Wachmann ist hinter dir!");
+}
+// Lastwagen von vorne: Spiel vorbei (außer mit Hoverboard)
+function hitHard(o){
+  if (G.hover > 0) return useHover(o);
+  crash();
+}
+let chaser = null, chaserMixer = null;
+function setupChaser(){
+  const m = clone("character"); if (!m) return;
+  m.scale.setScalar(1.7); m.rotation.y = 0; m.position.y = .34;
+  m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set("#2c3e70").convertSRGBToLinear(); } });
+  chaser = new THREE.Group(); chaser.add(m); chaser.position.z = 14; scene.add(chaser);
+  chaserMixer = new THREE.AnimationMixer(m);
+  const walk = TPL.character.animations.find(a => a.name === "walk");
+  if (walk) chaserMixer.clipAction(walk).play();
+}
+
+/* ---------- Jetpack ---------- */
+const JET_Y = 3.2, JET_TIME = 8;
+const jetpack = new THREE.Group();
+{
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .7, 12), new THREE.MeshLambertMaterial({color: new THREE.Color("#7b4dd6").convertSRGBToLinear()}));
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(.16, .5, 10), new THREE.MeshBasicMaterial({color: 0xffa020}));
+  for (const s of [-1, 1]) {
+    const t = tank.clone(); t.position.set(s * .22, 1.1, .35); jetpack.add(t);
+    const f = flame.clone(); f.rotation.x = Math.PI; f.position.set(s * .22, .55, .35); jetpack.add(f);
+  }
+  jetpack.visible = false; player.add(jetpack);
+}
+function startJet(){ G.jet = JET_TIME; G.slide = 0; toast("🚀 Jetpack! Sammle die Münzen in der Luft!"); }
+function endJet(){
+  G.jet = 0; G.inv = 1.2;
+  // Landeplatz frei machen
+  G.objs.forEach(o => { if (o.type !== "coin" && o.type !== "letter" && o.z < PZ + 20) o.gone = true; });
+}
+function spawnAirCoins(z){
+  const lane = [-1, 0, 1][Math.floor(Math.random() * 3)];
+  for (let i = 0; i < 6; i++) G.objs.push({type:"coin", lane, z: z + i * 1.6, depth:.4, h: JET_Y});
+}
+
+/* ---------- Buchstaben-Jagd ---------- */
+const letterTex = {}, letterMat = {};
+function letterTexture(ch){
+  if (letterTex[ch]) return letterTex[ch];
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#7b4dd6"; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill();
+  g.lineWidth = 8; g.strokeStyle = "#ffd84a"; g.stroke();
+  g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.font = "bold 76px sans-serif";
+  g.fillText(ch, 64, 70);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  return letterTex[ch] = t;
+}
+function makeLetterMesh(o){
+  const s = new THREE.Sprite(letterMat[o.ch] || (letterMat[o.ch] = new THREE.SpriteMaterial({map: letterTexture(o.ch)})));
+  s.scale.setScalar(1.6);
+  const g = new THREE.Group(); g.add(s); g.position.y = 1.3;
+  scene.add(g); return g;
+}
+function pickHunt(){
+  const cands = POOL.filter(w => /^[a-z]{4,8}$/i.test(w.en));
+  if (!cands.length) return null;
+  const w = cands[Math.floor(Math.random() * cands.length)];
+  return {w, letters: [...w.en.toUpperCase()], got: 0};
+}
+function showHunt(){
+  const h = G.hunt, el = $("#hunt");
+  if (!h) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = "🔤 " + h.letters.map((c, i) => i < h.got ? c : "_").join("");
+}
+function pickLetter(){
+  const h = G.hunt; h.got++; sfx.coin(); showHunt();
+  if (h.got >= h.letters.length) {
+    const reward = 50; addCoins(reward);
+    toast(`🔤 ${h.w.en.toUpperCase()} = ${h.w.de}! +${reward} 🪙`);
+    sfx.ok(); setTimeout(() => speak(h.w.en), 300);
+    h.done = true;
+  }
+}
+
+/* ---------- Weiterspielen mit 3 Vokabeln (einmal pro Runde) ---------- */
+const REVIVE_WORDS = 3;
+function offerRevive(){
+  $("#reviveScreen").hidden = false;
+}
+$("#reviveYes").onclick = () => {
+  $("#reviveScreen").hidden = true;
+  G.revived = true; G.reviveLeft = REVIVE_WORDS;
+  ask("revive");
+};
+$("#reviveNo").onclick = () => { $("#reviveScreen").hidden = true; endGame(true); };
+
+/* ---------- Tagesbelohnung ---------- */
+function dayStr(offset = 0){ const d = new Date(); d.setDate(d.getDate() + offset); return d.toLocaleDateString("sv-SE"); }
+function dailyReward(){
+  const today = dayStr(0);
+  if (shop.lastDay === today) return;
+  const streak = shop.lastDay === dayStr(-1) ? (shop.streak || 0) + 1 : 1;
+  const reward = Math.min(7, streak) * 10;
+  shop.coins += reward; shop.lastDay = today; shop.streak = streak; saveShop();
+  $("#daily").innerHTML = `🎁 Tagesbelohnung: <b>+${reward} 🪙</b>` + (streak > 1 ? ` · ${streak} Tage hintereinander! 🔥` : " · Komm morgen wieder für mehr!");
+  $("#daily").hidden = false;
+}
+
+/* ---------- Mystery-Box ---------- */
+const MYSTERY_PRICE = 100;
+function openMystery(){
+  if (shop.coins < MYSTERY_PRICE) return;
+  shop.coins -= MYSTERY_PRICE;
+  const r = Math.random(), missing = SKINS.filter(s => !shop.skins.includes(s.id));
+  let msg;
+  if (r < .3 && missing.length) {
+    const s = missing[Math.floor(Math.random() * missing.length)];
+    shop.skins.push(s.id); shop.skin = s.id; msg = `🎁 Wow! Neuer Skin: ${s.name}!`;
+  } else if (r < .6) {
+    const it = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+    shop.items[it.id] = (shop.items[it.id] || 0) + 1; shop.use[it.id] = true; msg = `🎁 Du bekommst: ${it.icon} ${it.name}!`;
+  } else {
+    const c = [50, 80, 120, 150, 200][Math.floor(Math.random() * 5)];
+    shop.coins += c; msg = `🎁 ${c} Münzen!`;
+  }
+  sfx.ok(); return msg;
 }
 
 /* ---------- Start, Pause, Ende ---------- */
@@ -1069,19 +1329,20 @@ function endGame(crashed){
 function start(){
   newGame();
   G.mult = mult(); $("#mult").textContent = "×" + G.mult; boostTxt = null;
+  G.hunt = pickHunt(); showHunt();
   useItems(); renderUse();
   for (let z = 0; z < FAR; z += 4) spawnDeco(z);
   $("#startScreen").hidden = true; $("#endScreen").hidden = true; $("#hud").hidden = false;
-  try { actx && actx.resume(); } catch(e) {}
+  unlockAudio();
   countdown(() => { G.running = true; });
 }
 $("#startBtn").onclick = start;
 $("#againBtn").onclick = start;
 $("#pauseBtn").onclick = () => { if (!G.running) return; G.running = false; $("#pauseScreen").hidden = false; };
-$("#resumeBtn").onclick = () => { $("#pauseScreen").hidden = true; countdown(() => { G.running = true; }); };
+$("#resumeBtn").onclick = () => { unlockAudio(); $("#pauseScreen").hidden = true; countdown(() => { G.running = true; }); };
 $("#endBtn").onclick = () => endGame(false);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) saveShop();
+  if (document.hidden) { saveShop(); musicOff(); }
   if (document.hidden && G.running) { G.running = false; $("#pauseScreen").hidden = false; }
 });
 
@@ -1090,7 +1351,8 @@ bindPick();
 let modelsReady = false;
 showWallet(); renderUse(); renderMissions(); showMusicBtn();
 document.querySelectorAll(".musicBtn").forEach(b => b.onclick = toggleMusic);
-loadModels().then(() => { setupPlayer(); applySkin(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
+dailyReward(); showWallet();
+loadModels().then(() => { setupPlayer(); setupChaser(); applySkin(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
 loadVocab();
 requestAnimationFrame(loop);
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

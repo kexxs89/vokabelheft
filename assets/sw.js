@@ -1,5 +1,5 @@
 // Offline-Modus für die Webversion. Bei Änderungen an Dateien VERSION hochzählen.
-const VERSION = "v7";
+const VERSION = "v8";
 const CACHE = "vokabelheft-" + VERSION;
 const FILES = [
   "./",
