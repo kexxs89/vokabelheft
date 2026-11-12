@@ -107,6 +107,14 @@ p{margin:0}
 .hs li{padding:1px 0}
 .hs li.me{font-weight:700;color:var(--ink)}
 .hs small{color:var(--muted)}
+.toast{position:fixed;top:calc(max(10px,env(safe-area-inset-top)) + 52px);left:50%;transform:translateX(-50%);background:rgba(255,255,255,.95);
+  border-radius:16px;padding:8px 16px;font-weight:700;font-size:17px;box-shadow:0 3px 0 rgba(0,0,0,.15);z-index:8;max-width:92vw;text-align:center;pointer-events:none}
+.toast.pop{animation:pop .35s}
+@keyframes pop{0%{transform:translateX(-50%) scale(.8)}60%{transform:translateX(-50%) scale(1.06)}100%{transform:translateX(-50%) scale(1)}}
+.missions{list-style:none;margin:4px 0 2px;padding:0;font-size:15px}
+.missions li{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.missions li.done span{color:var(--green)}
+.missions small{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .q-msg{font-family:var(--font-display);font-size:24px;min-height:30px}
 .q-msg.ok{color:var(--green)} .q-msg.bad{color:var(--red)}
 .speak{border:2px solid var(--line);background:#fff;border-radius:999px;width:44px;height:44px;font-size:20px}
@@ -127,10 +135,14 @@ p{margin:0}
 <div class="hud" id="hud" hidden>
   <span class="pill">🏃 <span id="score">0</span></span>
   <span class="pill">🪙 <span id="coins">0</span></span>
+  <span class="pill" id="mult">×1</span>
   <span class="pill boost" id="boosts" hidden></span>
   <span class="grow"></span>
+  <button class="musicBtn" aria-label="Musik an/aus">🎵</button>
   <button id="pauseBtn" aria-label="Pause">⏸</button>
 </div>
+
+<div class="toast" id="toast" hidden></div>
 
 <div class="overlay" id="startScreen">
   <div class="card">
@@ -138,6 +150,7 @@ p{margin:0}
     <p>Lauf so weit du kannst! Alle 500 Punkte schreibst du eine Vokabel. Richtige Vokabeln bringen Münzen für den Shop. Aber Vorsicht: Wenn du gegen etwas rennst, ist das Spiel vorbei!</p>
     <p class="wallet">🪙 <span class="walletNum">0</span></p>
     <button class="big-btn green" id="shopBtn" style="font-size:20px;padding:8px 24px">🛍️ Shop</button>
+    <div class="hs-box"><b>🎯 Missionen</b><ul class="missions" id="missions"></ul><small class="muted" id="multInfo"></small></div>
     <div class="help">
       <b>⬅️➡️</b><span>Wischen: Spur wechseln</span>
       <b>⬆️</b><span>Wischen: springen (über Absperrungen)</span>
@@ -165,6 +178,7 @@ p{margin:0}
   <div class="card">
     <h2>Pause</h2>
     <button class="big-btn green" id="resumeBtn">Weiter</button>
+    <button class="tool musicBtn" aria-label="Musik an/aus">🎵</button>
     <button class="link" id="endBtn" style="background:none;border:none">Spiel beenden</button>
   </div>
 </div>
@@ -449,6 +463,7 @@ function playAct(name, speed = 1){
 }
 
 function makeObjMesh(o){
+  if (o.type === "pu") return makePuMesh(o);
   const g = new THREE.Group();
   if (o.type === "coin") {
     const m = clone("coin");
@@ -469,6 +484,13 @@ function makeObjMesh(o){
     // Lastwagen: Spur wechseln
     const m = clone(["truckGreen", "truckPurple", "truckRed", "truckYellow"][o.c]);
     if (m) { m.scale.setScalar(1.45); m.position.set(0, .45, -o.depth * ZS / 2); g.add(m); }
+    if (o.vz) {
+      // Scheinwerfer: dieser Lastwagen fährt dir entgegen
+      for (const s of [-1, 1]) {
+        const l = new THREE.Mesh(new THREE.SphereGeometry(.22, 12, 8), new THREE.MeshBasicMaterial({color: 0xfff3a0}));
+        l.position.set(s * .7, 1, .15); g.add(l);
+      }
+    }
     else { const b = new THREE.Mesh(new THREE.BoxGeometry(LANE * .85, 2.2, o.depth * ZS), mat(COLORS[o.c])); b.position.set(0, 1.1, -o.depth * ZS / 2); g.add(b); }
   }
   scene.add(g); return g;
@@ -499,21 +521,34 @@ let G = null; // Spielzustand
 function newGame(){
   G = {running:false, t:0, speed:13, dist:0, coins:0, right:0, wrong:0, bonus:0,
        lane:0, x:0, y:0, vy:0, slide:0, objs:[], deco:[], nextRow:18, nextDeco:0, asked:new Set(),
-       nextQuiz:QUIZ_EVERY, magnet:false, double:false, superjump:false};
+       nextQuiz:QUIZ_EVERY, magnet:false, double:false, superjump:false,
+       pu:{magnet:0, double:0, superjump:0}, stats:{pups:0}, score:0, mult:1, boostT:0};
 }
 newGame();
 
 function spawnRow(z){
-  // Mindestens eine Spur bleibt frei oder überwindbar
+  // Mindestens eine Spur bleibt frei oder überwindbar. Spuren mit entgegenkommendem Lastwagen bleiben leer.
+  const busy = new Set(G.objs.filter(o => o.vz && o.z > PZ - 3).map(o => o.lane));
+  const lanes = shuffle([-1,0,1].filter(l => !busy.has(l)));
+  if (!lanes.length) return;
   const kinds = ["low","high","train"];
-  const lanes = shuffle([-1,0,1]);
-  const n = Math.random() < .35 ? 2 : 1;
+  const n = Math.min(lanes.length - 1, Math.random() < .35 ? 2 : 1);
   for (let i = 0; i < n; i++){
     const k = kinds[Math.floor(Math.random() * (G.dist < 150 ? 2 : 3))];
-    G.objs.push({type:k, lane:lanes[i], z, depth: k === "train" ? 2.1 : .3, c: Math.floor(Math.random()*4)});
+    const o = {type:k, lane:lanes[i], z, depth: k === "train" ? 2.1 : .3, c: Math.floor(Math.random()*4)};
+    // Ab 400 Punkten fahren manche Lastwagen entgegen, aber nur auf einer leeren Spur
+    if (k === "train" && G.dist > 400 && Math.random() < .4 && !G.objs.some(x => x.lane === o.lane && x.z > PZ && x.type !== "coin")) {
+      o.vz = 7 + Math.min(6, G.dist / 400);
+      G.objs.forEach(x => { if (x.type === "coin" && x.lane === o.lane) x.gone = true; });
+    }
+    G.objs.push(o);
   }
-  const free = lanes[2];
-  if (Math.random() < .7) for (let i = 0; i < 5; i++) G.objs.push({type:"coin", lane:free, z:z + i*1.6, depth:.4});
+  const free = lanes[lanes.length - 1];
+  if (n < lanes.length && G.dist > 100 && Math.random() < .12) {
+    G.objs.push({type:"pu", pu: shuffle(Object.keys(PU))[0], lane:free, z:z + 2, depth:.5});
+  } else if (n < lanes.length && Math.random() < .7) {
+    for (let i = 0; i < 5; i++) G.objs.push({type:"coin", lane:free, z:z + i*1.6, depth:.4});
+  }
 }
 function spawnDeco(z){
   for (const side of [-1, 1]) G.deco.push({side, z: z + Math.random(), h: 1.5 + Math.random()*2.5,
@@ -522,8 +557,8 @@ function spawnDeco(z){
 
 /* ---------- Steuerung ---------- */
 function move(dir){ if (!G.running) return; G.lane = Math.max(-1, Math.min(1, G.lane + dir)); }
-function jump(){ if (!G.running || G.y > .01) return; G.vy = G.superjump ? 10.5 : 8.6; G.slide = 0; sfx.jump(); }
-function slide(){ if (!G.running) return; G.slide = .75; if (G.y > .01) G.vy = -12; }
+function jump(){ if (!G.running || G.y > .01) return; G.vy = on("superjump") ? 10.5 : 8.6; G.slide = 0; sfx.jump(); missionAdd("jumps", 1); }
+function slide(){ if (!G.running) return; if (G.slide <= 0) missionAdd("slides", 1); G.slide = .75; if (G.y > .01) G.vy = -12; }
 addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT") return;
   const k = e.key;
@@ -550,6 +585,7 @@ let last = 0;
 function loop(ts){
   const dt = Math.min(.05, (ts - (last || ts)) / 1000); last = ts;
   if (G.running) update(dt);
+  if (G.running && !musicTimer) musicOn(); else if (!G.running && musicTimer) musicOff();
   draw(dt);
   requestAnimationFrame(loop);
 }
@@ -561,7 +597,9 @@ function update(dt){
   G.x += (G.lane - G.x) * Math.min(1, dt * 14);
   G.vy -= 26 * dt; G.y = Math.max(0, G.y + G.vy * dt); if (G.y === 0) G.vy = 0;
   G.slide = Math.max(0, G.slide - dt);
-  for (const o of G.objs) o.z -= dz;
+  for (const o of G.objs) o.z -= dz + (o.vz || 0) * dt;
+  for (const k in G.pu) G.pu[k] = Math.max(0, G.pu[k] - dt);
+  G.score += dz * G.mult;
   for (const d of G.deco) d.z -= dz;
   G.objs = G.objs.filter(o => !o.gone && o.z + o.depth > -1);
   G.deco = G.deco.filter(d => d.z > -2);
@@ -573,8 +611,12 @@ function update(dt){
     if (o.gone) continue;
     if (o.type === "coin"){
       // Mit Magnet: Münzen aus allen Spuren in der Nähe
-      const near = G.magnet ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && PZ >= o.z - .35 && PZ <= o.z + o.depth + .1);
-      if (near) { o.gone = true; addCoins(G.double ? 2 : 1); sfx.coin(); }
+      const near = on("magnet") ? (o.z < PZ + 3 && o.z > PZ - 1) : (o.lane === lane && PZ >= o.z - .35 && PZ <= o.z + o.depth + .1);
+      if (near) { o.gone = true; addCoins(on("double") ? 2 : 1); sfx.coin(); missionSet("coinsRun", G.coins); }
+      continue;
+    }
+    if (o.type === "pu"){
+      if (o.lane === lane && PZ >= o.z - .4 && PZ <= o.z + o.depth + .1) { o.gone = true; pickPowerup(o); }
       continue;
     }
     if (o.lane !== lane) continue;
@@ -582,9 +624,10 @@ function update(dt){
     const hit = o.type === "train" || (o.type === "low" && G.y < .75) || (o.type === "high" && G.slide <= 0);
     if (hit) { crash(); return; }
   }
-  $("#score").textContent = Math.floor(G.dist);
+  $("#score").textContent = Math.floor(G.score);
   $("#coins").textContent = G.coins;
-  if (G.dist >= G.nextQuiz) { G.nextQuiz += QUIZ_EVERY; checkpoint(); }
+  G.boostT -= dt; if (G.boostT <= 0) { G.boostT = .25; showBoosts(); }
+  if (G.score >= G.nextQuiz) { G.nextQuiz += QUIZ_EVERY; missionSet("scoreRun", Math.floor(G.score)); checkpoint(); }
 }
 
 /* ---------- Zeichnen ---------- */
@@ -601,6 +644,7 @@ function draw(dt){
   for (const m of shown) if (!alive.has(m)) scene.remove(m);
   shown = [...alive];
   for (const o of G.objs) if (o.type === "coin" && !o.gone) o.mesh.rotation.y = G.t * 3 + o.z;
+  for (const o of G.objs) if (o.type === "pu" && !o.gone) o.mesh.position.y = 1.3 + Math.sin(G.t * 4) * .2;
   const off = G.dist % 2;
   sleepers.forEach((s, i) => { s.position.z = wz(i * 2 - off - 1); });
 
@@ -644,7 +688,7 @@ const ITEMS = [
   {id:"double", icon:"✖️2", name:"Doppel-Münzen", desc:"Jede Münze zählt eine Runde lang doppelt.", price:60},
   {id:"superjump", icon:"🦘", name:"Super-Sprung", desc:"Eine Runde lang springst du höher.", price:30}
 ];
-let shop = {coins:0, skins:["standard"], skin:"standard", items:{}, use:{}};
+let shop = {coins:0, skins:["standard"], skin:"standard", items:{}, use:{}, music:true, mlevel:0, mprog:{}, mdone:{}};
 try { const s = JSON.parse(localStorage.getItem(SHOP_KEY)); if (s) shop = Object.assign(shop, s); } catch(e) {}
 function saveShop(){ try { localStorage.setItem(SHOP_KEY, JSON.stringify(shop)); } catch(e) {} }
 function showWallet(){ document.querySelectorAll(".walletNum").forEach(el => el.textContent = shop.coins); }
@@ -753,7 +797,7 @@ function ask(reason){
   current = {w, reason, tries:0, hints:0, maxHints:maxHints(w.en), done:false, ok:false};
   const titles = {
     crash: ["Autsch! 💥 Schreib die Vokabel, dann geht's weiter.", " bad"],
-    checkpoint: [`🏁 ${Math.floor(G.dist / 100) * 100} Punkte! Vokabel-Zeit!`, ""],
+    checkpoint: [`🏁 ${G.nextQuiz - QUIZ_EVERY} Punkte! Vokabel-Zeit!`, ""],
     again: ["Noch eine Vokabel!", ""]
   };
   $("#qTitle").textContent = titles[reason][0];
@@ -812,7 +856,7 @@ function finishQ(ok){
     // Belohnung: ohne Hilfe am meisten
     const reward = c.tries === 0 && c.hints === 0 ? 10 : c.hints === 0 ? 5 : 3;
     rec.r++; if (c.tries === 0 && c.hints === 0) rec.lvl = Math.min(LEARNED, rec.lvl + 1);
-    store.stars++; G.right++; addCoins(reward); G.bonus += reward;
+    store.stars++; G.right++; addCoins(reward); G.bonus += reward; missionAdd("vocab", 1);
     inp.className = "q-input ok";
     $("#qMsg").textContent = `Richtig! ⭐ +${reward} 🪙`; $("#qMsg").className = "q-msg ok"; sfx.ok();
     $("#qNext").textContent = "Weiterlaufen";
@@ -852,6 +896,137 @@ function countdown(done){
   }, 600);
 }
 
+/* ---------- Power-ups auf der Strecke ---------- */
+const PU_TIME = 15; // Sekunden
+const PU = {
+  magnet:    {icon:"🧲", color:"#d6333c", name:"Magnet"},
+  double:    {icon:"2×", color:"#f5b800", name:"Doppel-Münzen"},
+  superjump: {icon:"🦘", color:"#22915a", name:"Super-Sprung"}
+};
+const on = k => G[k] || G.pu[k] > 0;   // aus dem Shop (ganze Runde) oder eingesammelt (15 s)
+const puTex = {};
+function puTexture(k){
+  if (puTex[k]) return puTex[k];
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = PU[k].color; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill();
+  g.lineWidth = 8; g.strokeStyle = "#fff"; g.stroke();
+  g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = k === "double" ? "bold 56px sans-serif" : "64px sans-serif";
+  g.fillText(PU[k].icon, 64, 68);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  return puTex[k] = t;
+}
+function makePuMesh(o){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map: puTexture(o.pu)}));
+  s.scale.setScalar(1.5);
+  const g = new THREE.Group(); g.add(s); g.position.y = 1.3;
+  scene.add(g); return g;
+}
+function pickPowerup(o){
+  G.pu[o.pu] = PU_TIME; G.stats.pups++;
+  sfx.ok(); toast(`${PU[o.pu].icon} ${PU[o.pu].name}!`);
+  missionAdd("pups", 1);
+}
+let boostTxt = "";
+function showBoosts(){
+  const parts = [];
+  for (const k of Object.keys(PU)) {
+    if (G[k]) parts.push(PU[k].icon);
+    else if (G.pu[k] > 0) parts.push(`${PU[k].icon} ${Math.ceil(G.pu[k])}`);
+  }
+  const t = parts.join("  ");
+  if (t !== boostTxt) { boostTxt = t; $("#boosts").textContent = t; $("#boosts").hidden = !t; }
+}
+
+/* ---------- Hinweise oben im Bild ---------- */
+let toastT = null;
+function toast(msg){
+  const el = $("#toast"); el.textContent = msg; el.hidden = false;
+  el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+  clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2200);
+}
+
+/* ---------- Musik (wird im Browser erzeugt, keine Dateien) ---------- */
+const BPM = 140, STEP = 60 / BPM / 2;
+const CHORDS = [[48, 52, 55, 60], [45, 48, 52, 57], [41, 45, 48, 53], [43, 47, 50, 55]]; // C, Am, F, G
+const MELODY = [72, 0, 76, 79, 0, 76, 74, 72,  69, 0, 72, 76, 0, 72, 71, 69,  65, 0, 69, 72, 0, 77, 76, 72,  67, 0, 71, 74, 79, 0, 77, 74];
+let musicTimer = null, nextNote = 0, step = 0, musicGain = null;
+const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+function tone(midi, t, dur, type, vol){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = hz(midi);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(musicGain); o.start(t); o.stop(t + dur + .02);
+}
+function kick(t){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(45, t + .15);
+  g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.0001, t + .2);
+  o.connect(g).connect(musicGain); o.start(t); o.stop(t + .22);
+}
+function playStep(s, t){
+  const ch = CHORDS[Math.floor(s / 8) % 4];
+  if (s % 4 === 0) { kick(t); tone(ch[0] - 12, t, STEP * 3, "triangle", .35); }
+  tone(ch[1 + s % 3], t, STEP * .9, "square", .05);
+  const m = MELODY[s % MELODY.length]; if (m) tone(m, t, STEP * 1.6, "triangle", .14);
+}
+function musicOn(){
+  if (!shop.music || musicTimer) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume();
+    if (!musicGain) { musicGain = actx.createGain(); musicGain.gain.value = .22; musicGain.connect(actx.destination); }
+    nextNote = actx.currentTime + .05;
+    musicTimer = setInterval(() => { while (nextNote < actx.currentTime + .25) { playStep(step++, nextNote); nextNote += STEP; } }, 60);
+  } catch(e) {}
+}
+function musicOff(){ clearInterval(musicTimer); musicTimer = null; }
+function showMusicBtn(){ document.querySelectorAll(".musicBtn").forEach(b => b.textContent = shop.music ? "🎵" : "🔇"); }
+function toggleMusic(){ shop.music = !shop.music; saveShop(); showMusicBtn(); if (shop.music && G.running) musicOn(); else musicOff(); }
+
+/* ---------- Missionen und Multiplikator ---------- */
+const MISSIONS = [
+  {k:"coinsRun", run:true, txt:n => `Sammle ${n} Münzen in einer Runde`, steps:[30, 60, 100, 150, 220]},
+  {k:"jumps", txt:n => `Springe ${n}-mal`, steps:[10, 25, 50, 80, 120]},
+  {k:"vocab", txt:n => `Schreibe ${n} Vokabeln richtig`, steps:[3, 6, 10, 15, 20]},
+  {k:"scoreRun", run:true, txt:n => `Schaffe ${n} Punkte in einer Runde`, steps:[400, 800, 1500, 2500, 4000]},
+  {k:"slides", txt:n => `Rutsche ${n}-mal`, steps:[5, 15, 30, 50, 80]},
+  {k:"pups", txt:n => `Sammle ${n} Power-ups`, steps:[1, 3, 5, 8, 12]}
+];
+function currentMissions(){
+  const L = shop.mlevel || 0, tier = Math.min(4, Math.floor(L / 2));
+  return [L % 6, (L + 2) % 6, (L + 4) % 6].map(i => ({...MISSIONS[i], n: MISSIONS[i].steps[tier]}));
+}
+const mult = () => Math.min(30, 1 + (shop.mlevel || 0));
+// Fortschritt: bei "in einer Runde" zählt der beste Lauf, sonst wird zusammengezählt
+function missionSet(k, v){ missionUpdate(k, v, true); }
+function missionAdd(k, v){ missionUpdate(k, v, false); }
+function missionUpdate(k, v, isRun){
+  const ms = currentMissions(), m = ms.find(x => x.k === k); if (!m) return;
+  shop.mprog = shop.mprog || {}; shop.mdone = shop.mdone || {};
+  if (shop.mdone[k]) return;
+  shop.mprog[k] = isRun ? Math.max(shop.mprog[k] || 0, v) : (shop.mprog[k] || 0) + v;
+  if (shop.mprog[k] >= m.n) {
+    shop.mdone[k] = true; sfx.ok(); toast(`✅ Mission geschafft: ${m.txt(m.n)}`);
+    if (ms.every(x => shop.mdone[x.k])) {
+      const reward = 50 + 25 * (shop.mlevel || 0);
+      shop.mlevel = (shop.mlevel || 0) + 1; shop.mprog = {}; shop.mdone = {};
+      shop.coins += reward;
+      setTimeout(() => toast(`🎉 Alle Missionen! Multiplikator ×${mult()} und +${reward} 🪙`), 2300);
+      $("#mult").textContent = "×" + mult();
+    }
+    saveShop();
+  }
+}
+function renderMissions(){
+  const ms = currentMissions();
+  $("#missions").innerHTML = ms.map(m => {
+    const done = shop.mdone && shop.mdone[m.k], p = Math.min(m.n, (shop.mprog && shop.mprog[m.k]) || 0);
+    return `<li class="${done ? "done" : ""}"><span>${done ? "✅" : "⬜"} ${esc(m.txt(m.n))}</span><small>${done ? "geschafft" : `${p} / ${m.n}`}</small></li>`;
+  }).join("");
+  $("#multInfo").textContent = `Punkte-Multiplikator: ×${mult()}`;
+}
+
 /* ---------- Start, Pause, Ende ---------- */
 /* Bestenliste: die 10 besten Läufe, gespeichert auf diesem Gerät */
 const HS_KEY = "vokabelheft-rennen-bestenliste";
@@ -879,7 +1054,8 @@ function showBest(){
 }
 function endGame(crashed){
   $("#pauseScreen").hidden = true; $("#questionScreen").hidden = true; $("#hud").hidden = true;
-  const score = Math.floor(G.dist);
+  const score = Math.floor(G.score);
+  missionSet("scoreRun", score); renderMissions();
   const entry = {s:score, d:new Date().toLocaleDateString("de-AT", {day:"numeric", month:"numeric"}), v:G.right};
   const {top, rank} = score > 0 ? addHS(entry) : {top:loadHS(), rank:0};
   saveShop(); showWallet(); renderUse();
@@ -892,6 +1068,7 @@ function endGame(crashed){
 }
 function start(){
   newGame();
+  G.mult = mult(); $("#mult").textContent = "×" + G.mult; boostTxt = null;
   useItems(); renderUse();
   for (let z = 0; z < FAR; z += 4) spawnDeco(z);
   $("#startScreen").hidden = true; $("#endScreen").hidden = true; $("#hud").hidden = false;
@@ -911,7 +1088,8 @@ document.addEventListener("visibilitychange", () => {
 showBest();
 bindPick();
 let modelsReady = false;
-showWallet(); renderUse();
+showWallet(); renderUse(); renderMissions(); showMusicBtn();
+document.querySelectorAll(".musicBtn").forEach(b => b.onclick = toggleMusic);
 loadModels().then(() => { setupPlayer(); applySkin(); addClouds(); for (let z = 0; z < FAR; z += 4) spawnDeco(z); modelsReady = true; refreshStart(); });
 loadVocab();
 requestAnimationFrame(loop);
